@@ -1,190 +1,275 @@
 # GitHub Project Manager MCP Server
 
-[![Python Version](https://img.shields.io/pypi/pyversions/gh-project-manager-mcp.svg)](https://pypi.org/project/gh-project-manager-mcp/) <!-- Placeholder: Add actual PyPI badge when published -->
-[![PyPI version](https://badge.fury.io/py/gh-project-manager-mcp.svg)](https://badge.fury.io/py/gh-project-manager-mcp) <!-- Placeholder: Add actual PyPI badge when published -->
-
-An MCP (Model Context Protocol) server wrapping the GitHub CLI (`gh`) to provide tools for managing GitHub resources like issues, pull requests, and projects.
+A Model Context Protocol (MCP) server that wraps the GitHub CLI (`gh`) to provide advanced GitHub project management capabilities for AI assistants.
 
 ## Overview
 
-This project exposes various `gh` commands as MCP tools, allowing language models or other MCP clients to interact with GitHub programmatically. It aims to provide a robust and configurable interface for automating GitHub workflows.
-
-## Features
-
-Currently implemented capabilities include:
-
-*   **Issues:** Create, view, list, close, comment, delete, create branches, list linked branches, get status, transfer, unlock, unpin.
-*   **Pull Requests:** Create, view, list, close, comment, edit, merge, review, diff, checkout, ready, create-review, list-reviews, reopen, checks.
-*   **Projects:** Create, close, copy, delete, edit, list, view, field-create, field-delete, field-list, item-add, item-archive, item-create, item-delete, item-edit, item-list.
-*   **Repositories:** List repositories.
-*   **(And potentially others as development continues)**
+GitHub Project Manager MCP Server enables AI assistants to interact with GitHub repositories, issues, pull requests, and other GitHub features through a standardized Model Context Protocol interface. By wrapping the GitHub CLI, it provides a seamless integration layer between AI agents and GitHub's features.
 
 ## Installation
 
-This project uses Poetry for dependency management and packaging.
+### Prerequisites
 
-**1. Build the Package:**
+- Python 3.11 or higher
+- Poetry (for dependency management)
+- GitHub CLI (`gh`) installed
 
-Navigate to the project root directory and run:
-
-```bash
-poetry build
-```
-
-This will create a `dist/` directory containing the build artifacts (wheel and source distribution).
-
-**2. Install the Package:**
-
-You can install the package using `pip`. Choose one of the following methods:
-
-*   **From Local Build:**
-    ```bash
-    # Replace <version> with the actual version built
-    pip install dist/gh_project_manager_mcp-<version>-py3-none-any.whl
-    ```
-
-*   **From PyPI (Once Published):**
-    ```bash
-    pip install gh-project-manager-mcp
-    ```
-
-*   **Directly from Git (for development/testing):**
-    ```bash
-    pip install git+https://github.com/<your-username>/gh_project_manager_mcp.git@main # Or specify a branch/tag
-    ```
-
-## Running the Server
-
-Once installed, the server can be started using the console script added during installation:
+### Quick Install
 
 ```bash
-gh-pm-mcp-server
+# Clone the repository
+git clone https://github.com/yourusername/gh-project-manager-mcp.git
+cd gh-project-manager-mcp
+
+# Install dependencies with Poetry
+poetry install
+
+# Verify installation
+poetry run python -m gh_project_manager_mcp --version
 ```
 
-The server will start and listen for incoming MCP connections. By default, `FastMCP` usually listens on `localhost` and a specific port (e.g., 8080), which will be printed to the console on startup.
+### Docker Installation
 
-```
-INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
-Registering tools...
-Registering GitHub issue tools...
-GitHub issue tools registered.
-Registering GitHub pull request tools...
-GitHub pull request tools registered.
-Registering GitHub project tools...
-GitHub project tools registered.
-Tools registered successfully.
-INFO:     Started server process [XXXXX]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-```
+```bash
+# Build the Docker image
+docker build -t gh-project-manager-mcp .
 
-Your MCP client will need to be configured to connect to the host and port the server is listening on (e.g., `http://127.0.0.1:8080`).
+# Run the container with your GitHub token
+docker run -p 8000:8000 -e GH_TOKEN=your_github_token gh-project-manager-mcp
+```
 
 ## Authentication
 
-The server uses the GitHub CLI (`gh`) internally. Authentication is handled automatically by `gh`. Ensure you have authenticated `gh` in the environment where the server is running:
+This MCP server handles GitHub authentication for you using a personal access token. You don't need to authenticate with the GitHub CLI separately.
+
+### Setting Up Your GitHub Token
+
+1. Create a Personal Access Token (PAT) at https://github.com/settings/tokens
+2. Ensure the token has appropriate scopes for your intended operations:
+   - `repo` for full repository access
+   - `workflow` for GitHub Actions control
+   - `read:org` for organization access (if needed)
+
+### Providing Your Token
+
+The token can be provided through:
 
 ```bash
-gh auth login
+# Environmental variable
+export GH_TOKEN=your_github_token
+
+# Or when starting the server
+GH_TOKEN=your_github_token poetry run python -m gh_project_manager_mcp.server
 ```
 
-Alternatively, you can set the `GH_TOKEN` environment variable with a GitHub Personal Access Token (PAT) that has the necessary scopes (e.g., `repo`, `project`, `read:org`).
+## Usage
 
-## Configuration
+### Starting the Server
 
-Many tool parameters can be configured using environment variables or have default values. The resolution precedence is:
+```bash
+# Start the server on default port (8000)
+poetry run python -m gh_project_manager_mcp.server
 
-1.  **Runtime Value:** Value provided directly in the tool call.
-2.  **Environment Variable:** Value set in the server's environment.
-3.  **Default Value:** Predefined default in the server configuration.
+# Start with custom port
+poetry run python -m gh_project_manager_mcp.server --port 8080
+```
 
-### Environment Variables & Defaults
+### Configuration
 
-The following table lists configurable parameters, their corresponding environment variables, and default values:
+Configuration is managed through environment variables or a `.env` file:
 
-| Capability     | Parameter               | Environment Variable                    | Default Value   | Type   | Notes                                           |
-|----------------|-------------------------|-----------------------------------------|-----------------|--------|-------------------------------------------------|
-| **Issue**      | `assignee`              | `DEFAULT_ISSUE_ASSIGNEE`                | `@me`           | `str`  |                                                 |
-|                | `project`               | `DEFAULT_ISSUE_PROJECT`                 | `None`          | `str`  |                                                 |
-|                | `labels`                | `DEFAULT_ISSUE_LABELS`                  | `None`          | `list` | Comma-separated in env var                      |
-|                | `issue_type`            | `DEFAULT_ISSUE_TYPE`                    | `None`          | `str`  | Special handling for `feature`/`bugfix` labels    |
-|                | `state` (list)          | `DEFAULT_ISSUE_LIST_STATE`              | `open`          | `str`  |                                                 |
-|                | `limit` (list)          | `DEFAULT_ISSUE_LIST_LIMIT`              | `30`            | `int`  |                                                 |
-|                | `close_comment`         | `None`                                  | `None`          | `str`  |                                                 |
-|                | `close_reason`          | `None`                                  | `None`          | `str`  | Valid: `completed`, `not planned`               |
-|                | `comment_body`          | `None`                                  | `None`          | `str`  | For `gh issue comment`                          |
-|                | `comment_body_file`     | `None`                                  | `None`          | `str`  | For `gh issue comment`                          |
-|                | `develop_base_branch`   | `MCP_GITHUB_DEFAULT_BASE_BRANCH`        | `None`          | `str`  | For `gh issue develop`                          |
-|                | `edit_milestone`        | `DEFAULT_ISSUE_EDIT_MILESTONE`          | `None`          | `str`  | For `gh issue edit`                             |
-| **Pull Req.**  | `assignee`              | `DEFAULT_PR_ASSIGNEE`                   | `@me`           | `str`  |                                                 |
-|                | `project`               | `DEFAULT_PR_PROJECT`                    | `None`          | `str`  |                                                 |
-|                | `reviewers`             | `DEFAULT_PR_REVIEWERS`                  | `None`          | `list` | Comma-separated in env var                      |
-|                | `labels`                | `DEFAULT_PR_LABELS`                     | `None`          | `list` | Comma-separated in env var                      |
-|                | `body` (create)         | `None`                                  | `""`            | `str`  |                                                 |
-|                | `close_comment`         | `DEFAULT_PR_CLOSE_COMMENT`              | `None`          | `str`  |                                                 |
-|                | `comment_body`          | `None`                                  | `None`          | `str`  | For `gh pr comment`                             |
-|                | `comment_body_file`     | `None`                                  | `None`          | `str`  | For `gh pr comment`                             |
-|                | `edit_milestone`        | `DEFAULT_PR_EDIT_MILESTONE`             | `None`          | `str`  | For `gh pr edit`                                |
-|                | `list_state`            | `DEFAULT_PR_LIST_STATE`                 | `open`          | `str`  |                                                 |
-|                | `list_limit`            | `DEFAULT_PR_LIST_LIMIT`                 | `30`            | `int`  |                                                 |
-|                | `author` (list)         | `DEFAULT_PR_LIST_AUTHOR`                | `None`          | `str`  |                                                 |
-|                | `base` (list)           | `DEFAULT_PR_LIST_BASE`                  | `None`          | `str`  |                                                 |
-|                | `head` (list)           | `DEFAULT_PR_LIST_HEAD`                  | `None`          | `str`  |                                                 |
-|                | `merge_body`            | `None`                                  | `None`          | `str`  | Placeholder                                     |
-|                | `review_body`           | `None`                                  | `None`          | `str`  | Placeholder                                     |
-|                | `review_body_file`      | `None`                                  | `None`          | `str`  | Placeholder                                     |
-| **ProjectItem**| `project_owner`         | `DEFAULT_PROJECT_OWNER`                 | `None`          | `str`  | For adding items                                |
-|                | `project` (target)      | `DEFAULT_PROJECT_TARGET`                | `None`          | `str`  | For adding items                                |
-|                | `priority`              | `DEFAULT_PROJECT_ITEM_PRIORITY`         | `Medium`        | `str`  | Potential future tool use                       |
-|                | `status`                | `DEFAULT_PROJECT_ITEM_STATUS`           | `to-do`         | `str`  | Potential future tool use                       |
-| **Repo**       | `limit` (list)          | `DEFAULT_REPO_LIST_LIMIT`               | `30`            | `int`  |                                                 |
-|                | `visibility` (list)     | `DEFAULT_REPO_LIST_VISIBILITY`          | `None`          | `str`  |                                                 |
-| **Project**    | `copy_source_owner`     | `DEFAULT_PROJECT_COPY_SOURCE_OWNER`     | `None`          | `str`  |                                                 |
-|                | `delete_owner`          | `DEFAULT_PROJECT_DELETE_OWNER`          | `None`          | `str`  |                                                 |
-|                | `edit_owner`            | `DEFAULT_PROJECT_EDIT_OWNER`            | `None`          | `str`  |                                                 |
-|                | `field_owner`           | `DEFAULT_PROJECT_FIELD_OWNER`           | `None`          | `str`  | For `field-create`, `field-delete`              |
-|                | `field_list_owner`      | `DEFAULT_PROJECT_FIELD_LIST_OWNER`      | `None`          | `str`  |                                                 |
-|                | `field_list_limit`      | `DEFAULT_PROJECT_FIELD_LIST_LIMIT`      | `30`            | `int`  |                                                 |
-|                | `item_add_owner`        | `DEFAULT_PROJECT_ITEM_ADD_OWNER`        | `None`          | `str`  |                                                 |
-|                | `item_archive_owner`    | `DEFAULT_PROJECT_ITEM_ARCHIVE_OWNER`    | `None`          | `str`  |                                                 |
-|                | `item_archive_project_id`| `DEFAULT_PROJECT_ITEM_ARCHIVE_PROJECT_ID`| `None`          | `int`  |                                                 |
-|                | `item_delete_owner`     | `DEFAULT_PROJECT_ITEM_DELETE_OWNER`     | `None`          | `str`  |                                                 |
-|                | `item_delete_project_id` | `DEFAULT_PROJECT_ITEM_DELETE_PROJECT_ID` | `None`          | `int`  |                                                 |
-|                | `item_edit_owner`       | `DEFAULT_PROJECT_ITEM_EDIT_OWNER`       | `None`          | `str`  |                                                 |
-|                | `item_edit_project_id`  | `DEFAULT_PROJECT_ITEM_EDIT_PROJECT_ID`  | `None`          | `int`  |                                                 |
-|                | `item_list_owner`       | `DEFAULT_PROJECT_ITEM_LIST_OWNER`       | `None`          | `str`  |                                                 |
-|                | `item_list_limit`       | `DEFAULT_PROJECT_ITEM_LIST_LIMIT`       | `30`            | `int`  |                                                 |
-|                | `list_owner`            | `DEFAULT_PROJECT_LIST_OWNER`            | `None`          | `str`  |                                                 |
-|                | `list_limit`            | `DEFAULT_PROJECT_LIST_LIMIT`            | `30`            | `int`  |                                                 |
-|                | `view_owner`            | `DEFAULT_PROJECT_VIEW_OWNER`            | `None`          | `str`  |                                                 |
+```
+GH_TOKEN=your_github_token           # GitHub Personal Access Token (required)
+GH_DEFAULT_OWNER=default_repo_owner  # Default repository owner (optional)
+GH_DEFAULT_REPO=default_repo_name    # Default repository name (optional)
+```
 
-*(Note: `None` default means the parameter is truly optional unless explicitly required by the underlying `gh` command. For list types set via environment variable, use comma-separated values, e.g., `DEFAULT_ISSUE_LABELS="bug,docs"*)
+## Available Tools
+
+The server exposes the following GitHub operations as MCP tools:
+
+### Issues
+
+* **create_issue** - Create a new issue in a GitHub repository
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `title`: Issue title (string, required)
+  * `body`: Issue body content (string, optional)
+  * `labels`: Labels to apply to this issue (array of strings, optional)
+  * `assignees`: Usernames to assign to this issue (array of strings, optional)
+  * `milestone`: Milestone number (number, optional)
+
+* **get_issue** - Get details of a specific issue
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `issue_number`: The number of the issue (number, required)
+
+* **list_issues** - List issues in a GitHub repository
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `state`: Filter by state ('open', 'closed', 'all') (string, optional)
+  * `labels`: Filter by labels (array of strings, optional)
+  * `sort`: Sort by ('created', 'updated', 'comments') (string, optional)
+  * `direction`: Sort direction ('asc', 'desc') (string, optional)
+  * `since`: Filter by date (ISO 8601 timestamp) (string, optional)
+  * `page`: Page number for pagination (number, optional)
+  * `perPage`: Results per page for pagination (number, optional)
+
+* **update_issue** - Update an existing issue
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `issue_number`: Issue number to update (number, required)
+  * `title`: New title (string, optional)
+  * `body`: New description (string, optional)
+  * `state`: New state ('open' or 'closed') (string, optional)
+  * `labels`: New labels (array of strings, optional)
+  * `assignees`: New assignees (array of strings, optional)
+  * `milestone`: New milestone number (number, optional)
+
+* **add_issue_comment** - Add a comment to an issue
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `issue_number`: Issue number to comment on (number, required)
+  * `body`: Comment text (string, required)
+
+* **get_issue_comments** - Get comments for an issue
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `issue_number`: Issue number (number, required)
+  * `page`: Page number (number, optional)
+  * `per_page`: Number of records per page (number, optional)
+
+### Pull Requests
+
+* **create_pull_request** - Create a new pull request
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `title`: PR title (string, required)
+  * `head`: Branch containing changes (string, required)
+  * `base`: Branch to merge into (string, required)
+  * `body`: PR description (string, optional)
+  * `draft`: Create as draft PR (boolean, optional)
+  * `maintainer_can_modify`: Allow maintainer edits (boolean, optional)
+
+* **get_pull_request** - Get details of a specific pull request
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `pullNumber`: Pull request number (number, required)
+
+* **list_pull_requests** - List pull requests in a repository
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `state`: Filter by state ('open', 'closed', 'all') (string, optional)
+  * `head`: Filter by head user/org and branch (string, optional)
+  * `base`: Filter by base branch (string, optional)
+  * `sort`: Sort by ('created', 'updated', 'popularity', 'long-running') (string, optional)
+  * `direction`: Sort direction ('asc', 'desc') (string, optional)
+  * `page`: Page number for pagination (number, optional)
+  * `perPage`: Results per page for pagination (number, optional)
+
+* **merge_pull_request** - Merge a pull request
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `pullNumber`: Pull request number (number, required)
+  * `merge_method`: Merge method ('merge', 'squash', 'rebase') (string, optional)
+  * `commit_title`: Title for merge commit (string, optional)
+  * `commit_message`: Extra detail for merge commit (string, optional)
+
+### Repositories
+
+* **create_repository** - Create a new GitHub repository
+  * `name`: Repository name (string, required)
+  * `description`: Repository description (string, optional)
+  * `private`: Whether the repository is private (boolean, optional)
+  * `autoInit`: Initialize with README (boolean, optional)
+
+* **get_file_contents** - Get contents of a file or directory
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `path`: File path (string, required)
+  * `branch`: Branch to get contents from (string, optional)
+
+* **create_or_update_file** - Create or update a single file
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required)
+  * `path`: Path where to create/update the file (string, required)
+  * `content`: Content of the file (string, required)
+  * `message`: Commit message (string, required)
+  * `branch`: Branch to create/update the file in (string, required)
+  * `sha`: SHA of file being replaced (for updates) (string, optional)
+
+* **create_branch** - Create a new branch
+  * `owner`: Repository owner (string, required)
+  * `repo`: Repository name (string, required) 
+  * `branch`: Name for new branch (string, required)
+  * `from_branch`: Source branch (defaults to repo default) (string, optional)
+
+## Integrating With AI Assistants
+
+This MCP server can be integrated with AI assistants that support the Model Context Protocol:
+
+```python
+from mcp_client import MCPClient
+
+# Initialize the client
+client = MCPClient("http://localhost:8000")
+
+# Example: Create an issue
+result = client.call_tool(
+    "mcp_github_create_issue",
+    {
+        "owner": "yourusername",
+        "repo": "your-repo",
+        "title": "Bug: Application crashes on startup",
+        "body": "When launching the app, it crashes immediately with error code 0xC0000374."
+    }
+)
+```
 
 ## Development
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/<your-username>/gh_project_manager_mcp.git
-    cd gh_project_manager_mcp
-    ```
-2.  **Install dependencies (including dev):**
-    ```bash
-    poetry install --all-extras
-    ```
-3.  **Run tests:**
-    ```bash
-    poetry run pytest
-    ```
-4.  **Run linters/formatters (e.g., black):**
-    ```bash
-    poetry run black .
-    ```
+### Project Structure
 
-## Contributing
+```
+src/gh_project_manager_mcp/
+├── config.py            # Configuration with TOOL_PARAM_CONFIG
+├── server.py            # MCP server entry point 
+├── tools/               # GitHub operations implementation
+│   ├── __init__.py
+│   ├── issues.py
+│   ├── pull_requests.py
+│   └── ...
+└── utils/              # Shared utilities
+    ├── __init__.py
+    └── gh_utils.py     # GitHub CLI wrapper utilities
+```
 
-Contributions are welcome! Please open an issue or submit a pull request.
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run specific test suite
+poetry run pytest tests/tools/test_issues.py
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Token Permissions
+
+If operations fail with 403 errors:
+1. Verify your token has the necessary permissions for the operation
+2. For organization operations, ensure your token has appropriate organization access
+
+#### Rate Limiting
+
+If you encounter rate limiting issues:
+1. GitHub API has rate limits based on your token/account type
+2. Consider using a token with higher limits (e.g., from a GitHub Apps installation)
 
 ## License
 
-<!-- Choose and add your license here, e.g., MIT -->
-This project is licensed under the MIT License. See the LICENSE file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
