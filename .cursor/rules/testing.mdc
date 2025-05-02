@@ -1,0 +1,693 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Testing Guidelines
+
+## 1. Framework & Tools
+
+- **Framework:** Use `pytest` for writing and running tests.
+- **Mocking:** Use `pytest-mock` (provides the `mocker` fixture) for patching objects and simulating behavior.
+- **Coverage:** Use `pytest-cov` to measure test coverage. Run tests with `poetry run pytest --cov=src/[package_name]`. Aim for high coverage, especially for utility and core logic modules.
+- **Assertion Utilities:** Prefer using pytest's built-in assertion mechanism rather than Python's `unittest.TestCase` assertions.
+- **Parameterization:** Use `pytest.mark.parametrize` for testing functions with multiple input combinations.
+- **Temporary Files/Directories:** Use `tmp_path` and `tmp_path_factory` fixtures for tests requiring file operations.
+
+## 2. Test Organization & Naming
+
+- **Directory Structure:** Test files MUST mirror the module structure in `src/`:
+  ```
+  src/gh_project_manager_mcp/utils/gh_utils.py → tests/utils/test_gh_utils.py
+  src/gh_project_manager_mcp/tools/issues.py → tests/tools/test_issues.py
+  ```
+
+- **Test File Naming:** 
+  - Always prefix test files with `test_` (e.g., `test_gh_utils.py`)
+  - Name test files after the module they test, not the function names within
+
+- **Test Function Naming:** Use descriptive names clearly identifying the scenario being tested:
+  - Pattern: `test_[unit_under_test]_[scenario_conditions]_[expected_outcome]`
+  - Examples:
+    - `test_resolve_param_runtime_value_provided`
+    - `test_run_gh_command_missing_token` 
+    - `test_create_issue_invalid_repo_returns_error`
+
+- **Test Class Organization:** When testing a function, class, or group of related functions:
+  - Group tests in a class named `Test<FunctionNameOrFeature>`, e.g., `TestResolveParam`
+  - This organization is particularly useful when:
+    - Multiple tests share fixture setup
+    - The module contains many functions requiring extensive testing
+    - Complex tests need multi-step preparation
+
+## 3. Test Structure & Documentation
+
+### 3.1 Standard Test Structure (Mandatory)
+
+**ALL** tests MUST follow the Given/When/Then structure both in comments and code organization:
+
+```python
+def test_function_name_scenario():
+    """Test description using Given/When/Then format.
+    
+    Given: The initial state or preconditions
+    When: The action or function being tested is executed
+    Then: The expected outcomes and assertions
+    """
+    # Given
+    # Set up test data, mocks, or preconditions
+    
+    # When
+    # Execute the function or action being tested
+    
+    # Act
+    result = function_under_test()
+    
+    # Then
+    # Verify the expected outcomes
+    assert result == expected_value
+```
+
+### A complete test example:
+
+```python
+def test_resolve_param_runtime_value_provided(mocker):
+    """Test resolving parameter using a provided runtime value.
+    
+    Given: A runtime value is provided with an environment value also available
+    When: resolve_param is called with those values
+    Then: The runtime value takes precedence and is returned
+    """
+    # Given
+    runtime_val = "runtime_user"
+    env_vars = {
+        TOOL_PARAM_CONFIG[TEST_CAPABILITY][TEST_PARAM_STR]["env_var"]: "env_user"
+    }
+    mocker.patch.dict(os.environ, env_vars, clear=True)
+    
+    # When
+    result = resolve_param(TEST_CAPABILITY, TEST_PARAM_STR, runtime_val)
+    
+    # Then
+    assert result == runtime_val
+```
+
+### 3.2 Test Docstrings
+
+- **Mandatory Format:** Every test function MUST have a docstring with the following structure:
+  ```python
+  """Brief description of what is being tested.
+  
+  Given: The initial state, preconditions, or setup
+  When: The action or function being tested is executed
+  Then: The expected outcomes that will be verified
+  """
+  ```
+- **Detail Level:** Docstrings should be specific enough that someone can understand what's being tested without reading the code.
+- **Domain-Specific Language:** Use terminology that matches the domain of the function being tested.
+
+## 4. Test Data & Fixtures
+
+### 4.1 Core Fixture Principles
+
+- **Fixture-First Approach:** Always use fixtures for creating test objects and data. Never instantiate complex objects directly in tests.
+- **Search First, Create Second:** Always search for existing fixtures before creating new ones.
+- **Fixture Location:** Place common fixtures in `tests/conftest.py`. Module-specific fixtures should be in the corresponding test module.
+- **Reusable Fixtures:** Design fixtures with sensible defaults that can be overridden for specific test needs.
+- **Focus on Real Objects:** Use real objects for domain/business logic. Only mock external dependencies (repositories, APIs, etc.).
+
+### 4.2 Test Data Management
+
+- **Constant Definition:** Define test constants at the module level, outside test functions:
+  ```python
+  # Test constants
+  TEST_REPO = "owner/repo"
+  TEST_TOKEN = "ghp_mocktesttoken123"
+  TEST_ISSUE_DATA = {
+      "title": "Test Issue",
+      "body": "This is a test issue body."
+  }
+  ```
+
+- **Complex Test Data:** For complex test data, use fixtures:
+  ```python
+  @pytest.fixture
+  def complex_issue_data() -> Dict[str, Any]:
+      """Return a complete set of test data for issue creation tests."""
+      return {
+          "title": "Complex Test Issue",
+          "body": "This is a test issue with detailed content.",
+          "labels": ["bug", "documentation"],
+          "assignees": ["testuser"]
+      }
+  ```
+
+### 4.3 Fixture Guidelines
+
+- **Scope Appropriately:** Use the appropriate scope for fixtures:
+  - `function` (default): When fixture state should be recreated for each test
+  - `class`: When fixture can be reused for all tests in a class
+  - `module`: When fixture can be reused for all tests in a module
+  - `package`: When fixture can be reused across modules
+  - `session`: When fixture should be created once for the entire test session
+
+- **Fixture Documentation:** Document fixtures with clear docstrings explaining their purpose and returned values:
+  ```python
+  @pytest.fixture
+  def mock_gh_response() -> Dict[str, Any]:
+      """Create a mock GitHub API response for issue creation.
+      
+      Returns:
+          Dict containing a sample successful response with issue details.
+      """
+      return {
+          "url": "https://github.com/owner/repo/issues/1",
+          "number": 1,
+          "title": "Test Issue",
+          "state": "open"
+      }
+  ```
+
+- **Fixture Typing:** Use type annotations for fixtures to document the return type:
+  ```python
+  @pytest.fixture
+  def mock_server(mocker: MockerFixture) -> MagicMock:
+      """Create a mock FastMCP server instance."""
+      server = mocker.MagicMock(spec=FastMCP)
+      return server
+  ```
+
+- **Fixture Factory Pattern:** For complex objects with many variations, use a factory pattern:
+  ```python
+  @pytest.fixture
+  def create_gh_issue():
+      """Fixture factory for creating GitHub issue data with customizable fields.
+      
+      Returns:
+          Function that creates an issue dict with specified overrides
+      """
+      def _create(
+          number: int = 1, 
+          title: str = "Test Issue", 
+          state: str = "open", 
+          **kwargs
+      ) -> Dict[str, Any]:
+          """Create GitHub issue data.
+          
+          Args:
+              number: Issue number
+              title: Issue title
+              state: Issue state
+              **kwargs: Additional fields to include
+              
+          Returns:
+              Dict representing a GitHub issue
+          """
+          issue = {
+              "number": number,
+              "title": title,
+              "state": state,
+              "url": f"https://github.com/owner/repo/issues/{number}"
+          }
+          issue.update(kwargs)
+          return issue
+          
+      return _create
+  ```
+
+- **Conftest Placement:** Place fixtures used across multiple test modules in `tests/conftest.py`
+
+### 4.4 Fixture Examples
+
+#### Basic Value Fixture
+
+```python
+@pytest.fixture
+def github_token() -> str:
+    """Return a mock GitHub token for testing."""
+    return "ghp_mocktesttoken123"
+```
+
+#### Service Mock Fixture
+
+```python
+@pytest.fixture
+def mock_github_service(mocker: MockerFixture) -> MagicMock:
+    """Create a mock GitHub service with common method stubs.
+    
+    Returns:
+        A MagicMock with pre-configured method stubs
+    """
+    mock = mocker.MagicMock()
+    
+    # Configure common return values
+    mock.get_user.return_value = {"login": "testuser", "id": 12345}
+    mock.is_authenticated.return_value = True
+    
+    return mock
+```
+
+#### Data Fixture (Direct)
+
+```python
+@pytest.fixture
+def test_issue_data() -> Dict[str, Any]:
+    """Provide test data for a GitHub issue.
+    
+    Returns:
+        Dict with issue data
+    """
+    return {
+        "title": "Test Issue",
+        "body": "Description of the test issue",
+        "assignees": ["user1"],
+        "labels": ["bug", "documentation"]
+    }
+```
+
+#### Factory Fixture (for Data Variations)
+
+```python
+@pytest.fixture
+def make_command_data():
+    """Factory fixture for creating command data with different parameters.
+    
+    Returns:
+        Function that generates command data with specified overrides
+    """
+    def _make(
+        owner: str = "default-owner",
+        repo: str = "default-repo", 
+        issue_number: int = 1,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Create command data with specified parameters.
+        
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            issue_number: Issue number
+            **kwargs: Additional command parameters
+            
+        Returns:
+            Dict with command data
+        """
+        data = {
+            "owner": owner,
+            "repo": repo,
+            "issue_number": issue_number
+        }
+        data.update(kwargs)
+        return data
+    
+    return _make
+```
+
+## 5. Mocking & Patching
+
+### 5.1 Core Mocking Principles
+
+- **Mock External Dependencies Only:** Mock only the direct external dependencies of the unit under test (APIs, repositories, etc.)
+- **Use Real Objects:** Use real objects for domain and business logic - do not mock these.
+- **Explicit Initialization:** Instantiate the class under test explicitly, injecting required mocks. Do not use magic or implicit setup.
+- **Consistent Return Values:** Set clear, consistent return values or side effects for all mocked methods.
+- **Verify Interactions:** Verify that the unit under test interacts with dependencies correctly.
+
+### 5.2 Standard Mocking Approach
+
+- **Preferred Method:** Use `mocker` fixture from pytest-mock rather than direct patch decorators:
+  ```python
+  # Preferred approach
+  def test_with_mock(mocker):
+      mocker.patch("module.function", return_value="mocked")
+      
+  # Avoid multiple decorators which can be harder to debug
+  @patch("module.function_a")
+  @patch("module.function_b")
+  def test_with_decorators(mock_b, mock_a):
+      pass
+  ```
+
+- **Context Managers:** For complex tests with many mocks, use context managers for clarity:
+  ```python
+  def test_with_multiple_mocks(mocker):
+      with mocker.patch("module.function_a") as mock_a, \
+           mocker.patch("module.function_b") as mock_b:
+          # Test code
+  ```
+
+### 5.3 Mock Configuration
+
+- **Return Values:** Set return values explicitly to make tests clear:
+  ```python
+  mock_function = mocker.patch("module.function")
+  mock_function.return_value = expected_result
+  ```
+
+- **Side Effects:** For dynamic mock behavior, use side_effect:
+  ```python
+  mock_function = mocker.patch("module.function")
+  mock_function.side_effect = [result1, result2, exception_to_raise]
+  ```
+
+- **Mock Assertions:** Verify mock interactions with specific assertions:
+  ```python
+  mock_function.assert_called_once()
+  mock_function.assert_called_once_with(expected_arg)
+  mock_function.assert_has_calls([call(arg1), call(arg2)])
+  ```
+
+### 5.4 Environment and System Mocking
+
+- **Environment Variables:** Use `mocker.patch.dict()` to mock environment variables:
+  ```python
+  mocker.patch.dict(os.environ, {"GITHUB_TOKEN": "mock_token"}, clear=True)
+  ```
+
+- **File System Mocking:** Use pytest's `tmp_path` fixture for file operations or use appropriate mocks:
+  ```python
+  def test_file_operations(tmp_path):
+      test_file = tmp_path / "test.txt"
+      test_file.write_text("Test content")
+      # Test code that interacts with the file
+  ```
+
+### 5.5 Mocking Example: Service with External Dependencies
+
+```python
+def test_update_issue_success(mocker):
+    """Test updating an issue successfully.
+    
+    Given: A valid issue update request
+    When: The update_issue function is called
+    Then: The GitHub API is called correctly and returns success
+    """
+    # Given
+    # Mock the GitHub API client
+    mock_github = mocker.MagicMock()
+    mock_github.update_issue.return_value = {"number": 123, "title": "Updated Title"}
+    
+    # Create the service with the mock dependency
+    issue_service = IssueService(github_client=mock_github)
+    
+    # Prepare test data
+    issue_data = {"title": "Updated Title", "body": "New description"}
+    
+    # When
+    result = issue_service.update_issue(owner="test-owner", repo="test-repo", 
+                                       issue_number=123, data=issue_data)
+    
+    # Then
+    # Verify the result is correct
+    assert result["number"] == 123
+    assert result["title"] == "Updated Title"
+    
+    # Verify the GitHub client was called correctly
+    mock_github.update_issue.assert_called_once_with(
+        owner="test-owner", 
+        repo="test-repo",
+        issue_number=123,
+        data=issue_data
+    )
+```
+
+## 6. Test Coverage & Completeness
+
+### 6.1 Coverage Requirements
+
+- **Minimum Coverage:** Maintain minimum 85% code coverage for the entire codebase
+- **Critical Component Coverage:** Aim for 95%+ coverage in critical components:
+  - Core utilities (e.g., `gh_utils.py`)
+  - Configuration management
+  - Error handling logic
+
+- **Coverage Command:** Run coverage tests with:
+  ```bash
+  poetry run pytest --cov=src/gh_project_manager_mcp
+  ```
+
+### 6.2 Test Completeness Checklist
+
+For each function or method, test these scenarios at minimum:
+
+- **Happy Path:** Test normal successful operation
+- **Edge Cases:** Test boundary conditions (empty inputs, minimum/maximum values)
+- **Error Handling:** Test error conditions:
+  - Invalid inputs
+  - Resource unavailability
+  - Expected exceptions
+- **Side Effects:** Test functions that have side effects by verifying the effects
+- **Parameter Variations:** Test with different combinations of parameters
+
+### 6.3 Test Focus & Scope
+
+- **Unit Tests:** Focus on testing a single unit (function, class, method) in isolation
+  - Mock external dependencies 
+  - Use real implementation of business logic
+  - Verify correct interactions with dependencies
+
+- **Integration Tests:** Test how components work together
+  - Use minimal mocking
+  - Verify end-to-end flows
+  - Focus on boundaries between components
+
+- **Function Contract Testing:** Verify that functions:
+  - Return correct values for valid inputs
+  - Handle invalid inputs appropriately
+  - Raise expected exceptions
+  - Have the expected side effects
+
+## 7. Integration Tests
+
+- **Test Location:** Place integration tests that test multiple components together in `tests/integration/`
+- **Fixture Reuse:** Reuse fixtures from unit tests when possible, but consider slower but more realistic setups
+- **Environment Isolation:** Ensure integration tests don't leave side effects in the testing environment
+- **Test Speed:** Consider separating slow integration tests with pytest marks:
+  ```python
+  @pytest.mark.slow
+  def test_slow_integration():
+      # Test code
+  ```
+
+### 7.1 API Integration Test Example
+
+```python
+@pytest.mark.integration
+def test_api_list_issues_success(mock_gh_api_server):
+    """Test listing issues through the API.
+    
+    Given: A mock GitHub API server returning issue data
+    When: The list_issues API endpoint is called
+    Then: The response should contain the issues from the API
+    """
+    # Given
+    mock_gh_api_server.add_issues([
+        {"number": 1, "title": "First issue"},
+        {"number": 2, "title": "Second issue"}
+    ])
+    
+    # When
+    client = TestClient(app)
+    response = client.get("/api/repos/owner/repo/issues")
+    
+    # Then
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert data[0]["number"] == 1
+    assert data[1]["title"] == "Second issue"
+```
+
+## 8. Testing Robustness
+
+### 8.1 Parameter Source Coverage
+
+- **Runtime Values:**  Test with provided values, `None`, empty strings/lists
+- **Environment Variables:** Test with valid and invalid values for all types (`str`, `int`, `list`)
+- **Default Values:** Test resolution to defaults when runtime/env values are absent
+
+### 8.2 Precise Assertions
+
+- **String Matching:** Exact matching for string outputs
+- **Structure Verification:** Verify structure and content of returned objects
+- **Error Format:** Ensure error returns follow the standard format
+
+### 8.3 Function Contract Validation
+
+- **Return Types:** Verify correct return types/structures
+- **Error Conditions:** Test all documented error paths
+- **Side Effects:** Verify expected side effects occur
+
+### 8.4 Exception Testing
+
+```python
+def test_invalid_input_raises_exception():
+    """Test that invalid input raises the appropriate exception.
+    
+    Given: Invalid input parameters
+    When: The function is called with these parameters
+    Then: The correct exception is raised with the expected message
+    """
+    # Given
+    invalid_input = -1  # Assuming negative values are invalid
+    
+    # When/Then
+    with pytest.raises(ValueError, match="Value must be positive"):
+        process_value(invalid_input)
+```
+
+## 9. Test Performance & Isolation
+
+- **Test Independence:** Tests must not depend on other tests' state
+- **External Resource Mocking:** Mock all external resources (files, APIs, etc.)
+- **Fast Test Suite:** Tests should run quickly (under 1 second per test is a good target)
+- **Setup Optimization:** Minimize setup in tests, use fixtures for complex setup
+- **Cleanup:** Tests must clean up after themselves when necessary
+
+## 10. Reference Examples
+
+The following sections provide complete examples of different test types.
+
+### 10.1 Utility Function Test
+
+```python
+def test_resolve_param_runtime_value_provided(mocker):
+    """Test that resolve_param returns the runtime value when provided.
+    
+    Given: A runtime value is provided and environment value is set
+    When: resolve_param is called with the capability, param name, and runtime value
+    Then: The runtime value should be returned, ignoring environment value
+    """
+    # Given
+    runtime_val = "runtime_user"
+    env_vars = {
+        "TEST_ENV_VAR": "env_user"
+    }
+    mocker.patch.dict(os.environ, env_vars, clear=True)
+    
+    # Setup config with environment variable mapping
+    test_config = {
+        "test_capability": {
+            "test_param": {
+                "env_var": "TEST_ENV_VAR",
+                "default": "default_value",
+                "type": "str"
+            }
+        }
+    }
+    mocker.patch("module.TOOL_PARAM_CONFIG", test_config)
+    
+    # When
+    result = resolve_param("test_capability", "test_param", runtime_val)
+    
+    # Then
+    assert result == runtime_val
+```
+
+### 10.2 Service Test with External Dependencies
+
+```python
+class TestIssueService:
+    """Tests for the IssueService class."""
+    
+    @pytest.fixture
+    def github_client_mock(self, mocker):
+        """Create a mock GitHub client.
+        
+        Returns:
+            Mock GitHub client with pre-configured methods
+        """
+        mock = mocker.MagicMock()
+        return mock
+        
+    @pytest.fixture
+    def issue_service(self, github_client_mock):
+        """Create an IssueService instance with mock dependencies.
+        
+        Returns:
+            Configured IssueService for testing
+        """
+        return IssueService(github_client=github_client_mock)
+    
+    def test_create_issue_success(self, issue_service, github_client_mock):
+        """Test creating an issue successfully.
+        
+        Given: Valid issue data
+        When: create_issue is called
+        Then: GitHub client is called correctly and returns the new issue
+        """
+        # Given
+        issue_data = {
+            "title": "Test Issue",
+            "body": "Description"
+        }
+        expected_result = {
+            "number": 1,
+            "title": "Test Issue",
+            "url": "https://github.com/owner/repo/issues/1"
+        }
+        github_client_mock.create_issue.return_value = expected_result
+        
+        # When
+        result = issue_service.create_issue(
+            owner="owner",
+            repo="repo",
+            title=issue_data["title"],
+            body=issue_data["body"]
+        )
+        
+        # Then
+        assert result == expected_result
+        github_client_mock.create_issue.assert_called_once_with(
+            owner="owner",
+            repo="repo",
+            data=issue_data
+        )
+    
+    def test_create_issue_error(self, issue_service, github_client_mock):
+        """Test handling API errors when creating an issue.
+        
+        Given: The GitHub client raises an exception
+        When: create_issue is called
+        Then: The exception is propagated
+        """
+        # Given
+        github_client_mock.create_issue.side_effect = GitHubApiError("API Error")
+        
+        # When/Then
+        with pytest.raises(GitHubApiError, match="API Error"):
+            issue_service.create_issue(
+                owner="owner",
+                repo="repo",
+                title="Test",
+                body="Body"
+            )
+```
+
+### 10.3 API Endpoint Test
+
+```python
+def test_get_issue_endpoint_success(client, mocker, test_issue_data):
+    """Test the GET /issues/{id} endpoint.
+    
+    Given: A valid issue ID and a mock service that returns issue data
+    When: The GET /issues/{id} endpoint is called
+    Then: The response should contain the issue data and have 200 status
+    """
+    # Given
+    issue_id = 123
+    mock_service = mocker.patch("app.services.issue_service.get_issue")
+    mock_service.return_value = test_issue_data
+    
+    # When
+    response = client.get(f"/api/issues/{issue_id}")
+    
+    # Then
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == test_issue_data["title"]
+    assert data["body"] == test_issue_data["body"]
+    mock_service.assert_called_once_with(issue_id=issue_id)
+```
+
+These examples provide templates and guidance for writing effective tests in different scenarios. Adapt the patterns to your specific testing needs while maintaining the core principles of clarity, completeness, and proper test isolation.

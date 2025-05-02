@@ -1,0 +1,23 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Debugging Procedures
+
+Guidelines for diagnosing and resolving common issues during development.
+
+## Syntax and Indentation Errors
+
+1.  **Initial Diagnosis:** If `pytest` fails during collection with `IndentationError` or `SyntaxError`, or if a file fails to parse (e.g., `ImportError` during test collection, formatter parsing errors).
+2.  **Formatter Check:** Propose running the installed code formatter (`black` or `ruff format`) on the problematic file using `run_terminal_cmd`.
+    ```bash
+    # Example for black
+    poetry run black path/to/problematic/file.py 
+    ```
+3.  **Analyze Formatter Output:**
+    *   If the formatter succeeds and modifies the file, re-run tests.
+    *   If the formatter succeeds but leaves the file unchanged, the syntax is likely correct according to the formatter; investigate other causes (e.g., import paths, environment issues).
+    *   If the formatter fails with a parsing error (`Cannot parse:`), the file contains a syntax error that the formatter cannot automatically fix.
+4.  **Manual Correction:** If the formatter fails to parse, request the user to manually inspect the file around the line number indicated by the formatter error (or the original `pytest` error) to fix the underlying syntax issue.
+5.  **Verification:** After manual correction, run the formatter again to confirm syntax validity before re-running tests.

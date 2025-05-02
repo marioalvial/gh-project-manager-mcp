@@ -1,0 +1,52 @@
+[project]
+name = "gh-project-manager-mcp"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Mário Alvial", email = "mse.alvial@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+]
+
+[tool.poetry]
+name = "gh-project-manager-mcp"
+version = "0.1.0"
+description = ""
+authors = ["Mário Alvial <mse.alvial@gmail.com>"]
+readme = "README.md"
+packages = [{include = "gh_project_manager_mcp", from = "src"}]
+dependencies = { python = ">=3.11", mcp = {version = "^1.6.0", extras = ["cli"]} }
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.2"
+pytest-mock = "^3.14.0"
+pytest-cov = "^5.0.0"
+# black = "^25.1.0"  # Black can be removed as Ruff handles formatting
+ruff = "^0.5.1" # Or latest version
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+# Use python 3.11 features
+target-version = "py311"
+line-length = 88 # Match Black's default, adjust if needed
+
+[tool.ruff.lint]
+# Enable Pyflakes (F), pycodestyle (E, W), isort (I), pydocstyle (D)
+select = ["E", "F", "W", "I", "D"]
+
+# Optionally ignore specific rules if needed, e.g., D100 (missing module docstring)
+# ignore = ["D100"]
+
+[tool.ruff.lint.pydocstyle]
+# Choose a convention if desired (e.g., "google", "numpy", "pep257")
+# convention = "google"
+
+[tool.ruff.format]
+# Configure formatter options if needed (defaults match Black mostly)
+# quote-style = "double"
+# indent-style = "space"

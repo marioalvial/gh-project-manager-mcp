@@ -1,0 +1,3 @@
+"""Configuration for the GitHub Project Manager MCP tool parameters."""
+
+# ... existing code ...

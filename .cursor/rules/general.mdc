@@ -1,0 +1,261 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## 1. Core Principles & Technologies
+
+-   **Language:** Python 3.11+
+-   **Package Management:** Poetry (`uv` preferred if available via Poetry)
+-   **Code Style:** Ruff for formatting and linting. Adhere to standard Python conventions (PEP 8).
+-   **Core Principle:** Prioritize clean, readable, maintainable, and well-tested code.
+
+## 2. Python Development Standards
+
+### 2.1. Typing
+
+-   **Mandatory Annotations:** ALL functions, methods, and class variables MUST have type annotations.
+-   **Return Types:** Explicitly annotate return types for all functions and methods, including `-> None` where applicable.
+-   **Use `typing`:** Utilize standard `typing` module constructs (`Optional`, `List`, `Dict`, `Any`, `Union`, etc.).
+-   **Type Aliases:** Create type aliases for complex types using `TypeAlias` (Python 3.10+) or direct assignment.
+-   **Generic Types:** Use generic types where appropriate (e.g., `List[str]`, `Dict[str, Any]`).
+-   **Protocol Classes:** Use Protocol classes for structural typing where appropriate.
+-   **Type Comments:** For Python 3.8+ code, use inline annotations rather than type comments.
+-   **Collection Parameters:** For parameters accepting collections, use the most generic type that works (e.g., `Sequence[str]` instead of `List[str]` for read-only access).
+
+### 2.2. Docstrings
+
+-   **Mandatory Docstrings:** ALL functions, methods, and classes MUST have descriptive docstrings following the PEP 257 convention.
+-   **Format:** Use the following consistent format for all docstrings:
+    ```python
+    def function_name(param1: type1, param2: type2) -> return_type:
+        """Short one-line description.
+        
+        More detailed description explaining the function's purpose,
+        behavior, and any important notes or caveats.
+        
+        Args:
+            param1: Description of the first parameter.
+            param2: Description of the second parameter.
+        
+        Returns:
+            Description of the return value.
+            
+        Raises:
+            ExceptionType: Description of when this exception is raised.
+        
+        Examples:
+            >>> function_name("example", 123)
+            "example result"
+        """
+    ```
+-   **Content:** Docstrings should clearly explain the purpose, arguments (`Args:`), return value (`Returns:`), and any potential exceptions raised (`Raises:`).
+-   **Updates:** Existing docstrings MUST be updated if the corresponding code changes.
+-   **Optional Sections:** Include `Examples:` for complex functions, and `Notes:` for implementation details when relevant.
+-   **Param Details:** For parameters with specific constraints (e.g., must be positive), include this information in the parameter description.
+
+### 2.3. Comments
+
+-   **Preserve Existing:** Existing comments in files MUST be preserved unless they are explicitly outdated or redundant due to refactoring.
+-   **Descriptive Only:** Add comments ONLY to explain the *why* or *what* of complex, non-obvious code sections, or to provide usage examples (`# Usage:`, `# Example:`).
+-   **Avoid Redundancy:** Do NOT add comments that merely restate what the code clearly does.
+-   **No History Comments:** Do NOT add comments detailing the *history* of changes (e.g., `# ADDED`, `# FIXED`, `# CORRECTED`). Use version control for history.
+-   **TODO Comments:** Use `# TODO: description` format for future improvements, but avoid committing TODOs without associated issues.
+-   **Implementation Notes:** Mark implementation details with `# NOTE: explanation`.
+-   **Warning Comments:** Use `# WARNING: explanation` for potential pitfalls or dangerous code.
+
+### 2.4. Imports
+
+-   **Organization:** Organize imports according to PEP 8 in the following order, with a blank line between each group:
+    1. Standard library imports
+    2. Related third-party imports
+    3. Local application/library specific imports
+-   **Absolute Imports:** Use absolute imports where possible for clarity within the `src` directory.
+-   **Import Aliases:** Use import aliases (`import module as alias`) only when it improves readability or avoids name collisions.
+-   **From Imports:** Prefer `from module import specific_item` over `import module` when only using a few items from a module. Use parentheses for multi-line imports.
+-   **Type Checking Imports:** Use `if TYPE_CHECKING:` blocks for imports only needed for type checking.
+-   **Wildcard Imports:** Never use wildcard imports (`from module import *`).
+-   **Unused Imports:** Remove all unused imports.
+-   **Import Order:** Use isort (via Ruff) to maintain consistent import order.
+
+### 2.5. Function and Method Design
+
+-   **Single Responsibility:** Functions should do one thing and do it well.
+-   **Size Limit:** Keep functions under 50 lines of code when possible. Consider refactoring larger functions.
+-   **Parameter Count:** Limit functions to 5-7 parameters. Use data classes or dictionaries for more parameters.
+-   **Default Arguments:** Use default arguments for optional parameters. Never use mutable types (lists, dicts) as default arguments.
+-   **Return Values:** Be consistent with return types. Don't mix returning None and actual values unless it's clearly documented.
+-   **Function Naming:** Use descriptive names that indicate what the function does. Use verb phrases for functions that perform actions.
+-   **Pure Functions:** Prefer pure functions (no side effects) where appropriate.
+-   **Error Handling:** Use exceptions for error conditions. Catch specific exceptions, not broad `Exception`.
+
+### 2.6. Class Design
+
+-   **Class Responsibility:** Classes should have a single responsibility.
+-   **Inheritance:** Use inheritance sparingly. Prefer composition over inheritance when possible.
+-   **Method Visibility:** Use `_` prefix for protected methods and `__` for private methods.
+-   **Class Methods:** Use `@classmethod` for alternative constructors and methods that don't require instance state.
+-   **Static Methods:** Use `@staticmethod` for methods that don't access instance or class state.
+-   **Properties:** Use properties to control access to attributes, especially for computed attributes.
+-   **Data Classes:** Use `@dataclass` for classes that primarily store data.
+-   **Class Documentation:** Document public methods, class purpose, and attributes in class docstrings.
+
+## 3. Testing Standards (Pytest)
+
+-   **Framework:** Use `pytest` and its plugins exclusively. Do **NOT** use the `unittest` module.
+-   **Location:** All test files MUST reside within the `./tests/` directory, mirroring the `src/` structure.
+-   **`__init__.py` Files:** Ensure `__init__.py` files exist in all test subdirectories within `./tests/` if they correspond to packages in `src/`.
+-   **Typing:** All test functions and fixtures MUST be fully type-annotated.
+-   **Docstrings:** All test functions MUST have docstrings explaining the test case (e.g., using Given/When/Then).
+-   **`TYPE_CHECKING` Imports:** For type checking within tests, conditionally import common pytest fixtures:
+    ```python
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from _pytest.capture import CaptureFixture
+        from _pytest.fixtures import FixtureRequest
+        from _pytest.logging import LogCaptureFixture
+        from _pytest.monkeypatch import MonkeyPatch
+        from pytest_mock.plugin import MockerFixture
+    ```
+
+## 4. Project Architecture (gh-project-manager-mcp)
+
+This project implements an MCP (Model Context Protocol) server acting as a wrapper around the GitHub CLI (`gh`).
+
+### 4.1. Directory Structure
+
+-   **`src/gh_project_manager_mcp/`**: Main source code.
+    -   **`config.py`**: `TOOL_PARAM_CONFIG` definition.
+    -   **`server.py`**: MCP server entry point and initialization.
+    -   **`tools/`**: Modules for `gh` command implementations (e.g., `issues.py`, `pull_requests.py`), each with `init_tools(server)`.
+        -   `__init__.py`: Package marker.
+    -   **`utils/`**: Shared utilities (e.g., `gh_utils.py`).
+        -   `__init__.py`: Package marker.
+-   **`tests/`**: Unit tests mirroring `src/`.
+    -   `__init__.py`: Package marker.
+    -   `test_server.py`
+    -   `tools/`: Tests for tool modules.
+        -   `__init__.py`: Package marker.
+        -   `test_issues.py`, `test_pull_requests.py`, etc.
+    -   `utils/`: Tests for utility modules.
+        -   `__init__.py`: Package marker.
+        -   `test_gh_utils.py`
+-   **`.cursor/rules/`**: Project-specific rules (`.mdc` files).
+-   **`pyproject.toml`**: Project metadata and dependencies (Poetry).
+-   **`README.md`**: Project documentation.
+-   **`Makefile`**: Build, test, run, and Docker commands.
+-   **`Dockerfile`**: Container definition.
+
+### 4.2. Core Patterns
+
+-   **Modular Tools:** `gh` command implementations grouped by module in `src/.../tools/`. Each module registers its tools via `init_tools(server)`.
+-   **Centralized GH Execution:** All `gh` CLI calls use `utils.gh_utils.run_gh_command`.
+-   **Configuration-Driven Parameters:** Optional tool parameters use `utils.gh_utils.resolve_param` and `config.TOOL_PARAM_CONFIG` for default/env var resolution.
+
+## 5. Configuration Management
+
+### 5.1. `TOOL_PARAM_CONFIG` (`config.py`)
+
+1.  **Mandatory Update:** When implementing/modifying a tool function using `resolve_param`, the corresponding entry in `TOOL_PARAM_CONFIG` MUST be added or updated.
+2.  **Type Specification:** EVERY parameter definition in `TOOL_PARAM_CONFIG` MUST include a `'type'` key (`'str'`, `'int'`, `'list'`, `'bool'`). Use `'type': 'str'` if no specific handling is needed but the parameter exists in the config.
+3.  **Verification:** Cross-reference `gh` command documentation to ensure parameter types in the config match expected CLI behavior.
+
+## 6. Operational & Workflow Guidelines
+
+### 6.1. Terminal Commands
+
+-   **Automatic Execution:** Propose and then automatically execute necessary terminal commands (dependency installation, server execution, etc.) unless specifically instructed otherwise. Do not wait for manual execution.
+-   **Output Analysis:** After EVERY terminal command execution, carefully analyze the *entire* stdout, stderr, and exit code. Report any errors, warnings, or unexpected output before proceeding. Do not assume success based solely on a zero exit code.
+-   **Retry Transient Errors:** If a command (especially network-dependent ones like `docker build`, `poetry install`) fails with a clearly transient network/DNS error (e.g., 'Could not resolve host', 'Temporary failure in name resolution', 'lookup ... no such host'), announce a retry, wait ~5 seconds, and retry **up to two times** (3 attempts total). Report persistent errors after retries.
+
+### 6.2. Code Modifications
+
+-   **AI Implementation:** Perform ALL required code modifications using available tools.
+-   **No Manual Edits:** Do NOT ask the user to make manual code changes, even if automated edits fail. Attempt alternative automated strategies or report the limitation.
+
+### 6.3. Development Mode Workflow
+
+-   **Activation:** User command "GO DEVELOPMENT MODE NOW".
+-   **Behavior:**
+    -   Implement requested features (code creation/edits/refactors).
+    -   Implement corresponding unit tests (`pytest`).
+    -   Run all tests (`make test`) after changes.
+    -   Autonomously fix task-related bugs, test failures, or linter errors.
+    -   Apply the retry logic for transient command errors (see 6.1).
+    -   Apply code modifications **without** seeking explicit user approval per step.
+    -   Cycle implement-test-fix until the request is complete or an unresolvable blocker occurs.
+    -   Report progress, significant actions, and final results concisely.
+-   **Deactivation:** User command "LEAVE DEVELOPMENT MODE". Revert to standard plan-propose-approve workflow.
+-   **Scope:** Applies only to the *currently active* user request. Standard approval rules apply outside this scope.
+
+### 6.4. Rule Creation ("Rulenize")
+
+-   **Trigger:** User command "Rulenize" on a new line after a clarification/guideline.
+-   **Action:** Analyze preceding conversation, formulate a concise rule, determine the best location in `.cursor/rules/*.mdc`, propose the rule and location, iterate based on feedback, and implement upon approval.
+
+## 7. Error Handling Standards
+
+### 7.1. Exception Hierarchy
+
+-   **Custom Exceptions:** Define custom exceptions for domain-specific errors, inheriting from appropriate built-in exceptions.
+-   **Exception Naming:** Use descriptive names ending with "Error" or "Exception".
+-   **Exception Hierarchy:** Organize exceptions in a logical hierarchy.
+
+### 7.2. Exception Usage
+
+-   **Specific Exceptions:** Raise the most specific exception type that applies.
+-   **Exception Messages:** Include clear, actionable error messages with relevant details.
+-   **Error Context:** Include contextual information (e.g., parameter values) in error messages.
+-   **Exception Documentation:** Document all exceptions that may be raised by a function in its docstring.
+
+### 7.3. Exception Handling
+
+-   **Specific Catches:** Catch only the specific exceptions you can handle, not broad exception types.
+-   **Do Something Principle:** When catching an exception, do something meaningful with it (log, transform, recover).
+-   **Avoid Silent Failures:** Never catch exceptions and do nothing.
+-   **Re-raising:** When re-raising exceptions, use `raise` without arguments to preserve the stack trace.
+-   **Context Managers:** Use context managers (`with` statement) for resource management.
+
+### 7.4. Structured Error Returns
+
+-   **Error Dictionaries:** For functions that return errors as dictionaries instead of raising exceptions, follow the standard format:
+    ```python
+    {
+        "error": "Brief error message",
+        "details": "Detailed explanation",
+        ... # Additional context as needed (e.g., "exit_code", "stderr")
+    }
+    ```
+-   **Consistent Return Types:** Be consistent with error handling approaches within related functions.
+
+## 8. Code Quality Guidelines
+
+### 8.1. Readability
+
+-   **Variable Names:** Use descriptive variable names that indicate purpose.
+-   **Consistency:** Be consistent in naming, formatting, and patterns throughout the code.
+-   **Magic Numbers:** Avoid magic numbers and strings; use constants with descriptive names.
+-   **Nested Code:** Limit nesting depth (if/for/while) to 3 levels or less.
+-   **Early Returns:** Use early returns to reduce nesting and improve readability.
+
+### 8.2. Performance Considerations
+
+-   **Appropriate Data Structures:** Choose appropriate data structures for operations.
+-   **Lazy Evaluation:** Use generators and lazy evaluation for large data sets.
+-   **Avoid N+1 Problems:** Batch operations where appropriate.
+-   **Memory Management:** Be mindful of memory usage for large operations.
+
+### 8.3. Security Practices
+
+-   **Input Validation:** Validate all external inputs before processing.
+-   **Secrets Management:** Never hardcode secrets. Use environment variables or secure storage.
+-   **Command Injection Prevention:** Properly escape and validate inputs used in commands.
+-   **Secure Defaults:** Design APIs with secure defaults.
+
+### 8.4. Logging
+
+-   **Logging Levels:** Use appropriate logging levels (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+-   **Contextual Information:** Include relevant context in log messages.
+-   **Avoid Sensitive Data:** Never log sensitive information (tokens, passwords).
+-   **Structured Logging:** Use structured logging for machine-readable logs.
