@@ -1,0 +1,5 @@
+# Task files
+/tasks/
+
+# Cursor AI configuration/rules
+/.cursor/ 
