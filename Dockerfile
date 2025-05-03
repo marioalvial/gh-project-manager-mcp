@@ -2,9 +2,10 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Define GH CLI version and architecture
+# Define GH CLI version
 ARG GH_VERSION=2.53.0
-ARG TARGETARCH=arm64
+# Let Docker automatically determine the target architecture
+ARG TARGETARCH
 
 # Install dependencies in a single layer to reduce image size
 # Install Poetry and configure it not to create virtualenvs
@@ -37,9 +38,10 @@ LABEL org.opencontainers.image.version="0.1.0"
 
 WORKDIR /app
 
-# Define GH CLI version and architecture
+# Define GH CLI version
 ARG GH_VERSION=2.53.0
-ARG TARGETARCH=arm64
+# Let Docker automatically determine the target architecture
+ARG TARGETARCH
 
 # Install GitHub CLI and runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
