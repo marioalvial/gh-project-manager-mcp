@@ -15,83 +15,157 @@ def _create_github_issue_impl(
     owner: str,
     repo: str,
     title: str,
-    body: Optional[str] = None,
-    assignee: Optional[str] = None,
-    issue_type: Optional[str] = None,
-    labels: Optional[List[str]] = None,
-    project: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Implement the logic for creating a GitHub issue.
 
     Uses `gh issue create`.
     """
-    # Resolve optional parameters through resolve_param utility
-    assignee_resolved = resolve_param("issue", "assignee", assignee)
-    labels_resolved = resolve_param("issue", "labels", labels)
-    project_resolved = resolve_param("issue", "project", project)
+    try:
+        print(
+            f"DEBUG [create_issue]: Starting with owner={owner}, repo={repo}, title={title}"
+        )
 
-    # Start building the command with required parameters
-    command = [
-        "issue",
-        "create",
-        "--repo",
-        f"{owner}/{repo}",
-        "--title",
-        title,
-        "--body",
-        body or "",
-        "--json",
-        "url,number,title,body,state",  # Request structured JSON output
-    ]
+        # Define optional parameters inside the function
+        body: Optional[str] = None
+        assignee: Optional[str] = None
+        issue_type: Optional[str] = None
+        labels: Optional[List[str]] = None
+        project: Optional[str] = None
 
-    # Add optional parameters if they were provided/resolved
-    if project_resolved:
-        command.extend(["--project", project_resolved])
-    if assignee_resolved:
-        command.extend(["--assignee", assignee_resolved])
+        # Resolve optional parameters through resolve_param utility
+        try:
+            assignee_resolved = resolve_param("issue", "assignee", assignee)
+            labels_resolved = resolve_param("issue", "labels", labels)
+            project_resolved = resolve_param("issue", "project", project)
+            print(
+                f"DEBUG [create_issue]: Resolved params: assignee={assignee_resolved}, labels={labels_resolved}, project={project_resolved}"
+            )
+        except Exception as e:
+            print(f"DEBUG [create_issue]: Error resolving parameters: {str(e)}")
+            return {"error": "Failed to resolve parameters", "details": str(e)}
 
-    # Handle issue type (maps to specific labels in GitHub: bug, enhancement, etc.)
-    issue_type_resolved = resolve_param("issue", "type", issue_type)
-    if issue_type_resolved:
-        # Map issue_type to GitHub's label system
-        type_label_map = {
-            "bug": "bug",
-            "feature": "enhancement",
-            "enhancement": "enhancement",
-            "documentation": "documentation",
-            "question": "question",
-        }
-        label = type_label_map.get(issue_type_resolved.lower())
-        if label:
-            if labels_resolved and isinstance(labels_resolved, list):
-                labels_resolved.append(label)
+        # Normalizar o nome do repositório (substituir underscores por hifens se necessário)
+        # Isso é necessário porque o GitHub CLI espera hifens nos nomes dos repositórios,
+        # mas nosso código pode estar usando underscores
+        repo = repo.replace("_", "-")
+        print(f"DEBUG [create_issue]: Normalized repo name: {repo}")
+
+        # Start building the command with required parameters
+        command = [
+            "issue",
+            "create",
+            "--repo",
+            f"{owner}/{repo}",
+            "--title",
+            title,
+        ]
+
+        # Add body if provided, otherwise use a default
+        body_resolved = body or "Created via GitHub MCP Server"
+        command.extend(["--body", body_resolved])
+
+        # Add optional parameters if they were provided/resolved
+        if project_resolved:
+            command.extend(["--project", project_resolved])
+        if assignee_resolved:
+            command.extend(["--assignee", assignee_resolved])
+
+        # Handle issue type (maps to specific labels in GitHub: bug, enhancement, etc.)
+        try:
+            issue_type_resolved = resolve_param("issue", "type", issue_type)
+            if issue_type_resolved:
+                # Map issue_type to GitHub's label system
+                type_label_map = {
+                    "bug": "bug",
+                    "feature": "enhancement",
+                    "enhancement": "enhancement",
+                    "documentation": "documentation",
+                    "question": "question",
+                }
+                label = type_label_map.get(issue_type_resolved.lower())
+                if label:
+                    if labels_resolved and isinstance(labels_resolved, list):
+                        labels_resolved.append(label)
+                    else:
+                        labels_resolved = [label]
+        except Exception as e:
+            print(f"DEBUG [create_issue]: Error resolving issue type: {str(e)}")
+            # Continue execution without issue type
+
+        # Add labels if provided
+        if labels_resolved:
+            for label in labels_resolved:
+                command.extend(["--label", label])
+
+        print(f"DEBUG [create_issue]: Final command: gh {' '.join(command)}")
+
+        # Execute the command
+        result = run_gh_command(command)
+        print(f"DEBUG [create_issue]: Command result type: {type(result)}")
+
+        # Handle the command result
+        if isinstance(result, dict):
+            if "error" in result:
+                print(f"DEBUG [create_issue]: Error in result: {result}")
             else:
-                labels_resolved = [label]
+                print(f"DEBUG [create_issue]: Success result: {result}")
+            return result  # Return the JSON result directly
+        elif isinstance(result, str):
+            print(f"DEBUG [create_issue]: String result received: {result[:100]}")
 
-    # Add labels if provided
-    if labels_resolved:
-        for label in labels_resolved:
-            command.extend(["--label", label])
+            # Tenta interpretar links do GitHub como sucesso
+            if result.startswith("https://github.com"):
+                url = result.strip()
 
-    # Execute the command
-    result = run_gh_command(command)
+                # Extrair informações do URL
+                # Formato típico: https://github.com/owner/repo/issues/123
+                try:
+                    parts = url.split("/")
+                    issue_number = int(parts[-1])
 
-    # Handle the command result
-    if isinstance(result, dict):
-        return result  # Return the JSON result directly
-    elif isinstance(result, str):
-        print(  # pragma: no cover
-            f"Unexpected string result from gh issue create: {result}", file=sys.stderr
-        )
-        return {"error": "Unexpected string result from gh issue create", "raw": result}
-    else:
-        print(  # pragma: no cover
-            f"Unexpected result type from gh issue create: {type(result)}",
-            file=sys.stderr,
-        )
+                    return {
+                        "status": "success",
+                        "url": url,
+                        "number": issue_number,
+                        "title": title,
+                        "body": body_resolved,
+                        "state": "open",
+                    }
+                except (IndexError, ValueError):
+                    # Se não conseguir extrair o número da issue, retorne apenas a URL
+                    return {
+                        "status": "success",
+                        "url": url,
+                        "message": f"Issue created successfully: {url}",
+                    }
+
+            # Tenta analisar como JSON (caso o resultado seja JSON em uma string)
+            try:
+                parsed_json = json.loads(result)
+                print(f"DEBUG [create_issue]: Parsed JSON from string: {parsed_json}")
+                return parsed_json
+            except json.JSONDecodeError:
+                print("DEBUG [create_issue]: Failed to parse result as JSON")
+                return {
+                    "error": "Unexpected string result from gh issue create",
+                    "raw": result,
+                }
+        else:
+            print(f"DEBUG [create_issue]: Unexpected result type: {type(result)}")
+            return {
+                "error": "Unexpected result type from gh issue create",
+                "raw": str(result),
+            }
+    except Exception as e:
+        import traceback
+
+        error_trace = traceback.format_exc()
+        print(f"DEBUG [create_issue]: Unhandled exception: {str(e)}")
+        print(f"DEBUG [create_issue]: Traceback: {error_trace}")
         return {
-            "error": "Unexpected result type from gh issue create",
-            "raw": str(result),
+            "error": "Unhandled exception in create_github_issue_impl",
+            "details": str(e),
+            "traceback": error_trace,
         }
 
 
@@ -128,18 +202,20 @@ def _get_github_issue_impl(owner: str, repo: str, issue_number: int) -> Dict[str
 def _list_github_issues_impl(
     owner: str,
     repo: str,
-    state: Optional[str] = None,
-    assignee: Optional[str] = None,
-    creator: Optional[str] = None,
-    mentioned: Optional[str] = None,
-    labels: Optional[List[str]] = None,
-    milestone: Optional[str] = None,
-    limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """List GitHub issues with optional filtering.
 
     Uses `gh issue list`.
     """
+    # Define optional parameters inside the function
+    state: Optional[str] = None
+    assignee: Optional[str] = None
+    creator: Optional[str] = None
+    mentioned: Optional[str] = None
+    labels: Optional[List[str]] = None
+    milestone: Optional[str] = None
+    limit: Optional[int] = None
+
     # Resolve parameters with defaults
     state_resolved = resolve_param("issue", "state", state)
     limit_resolved = resolve_param("issue", "limit", limit)

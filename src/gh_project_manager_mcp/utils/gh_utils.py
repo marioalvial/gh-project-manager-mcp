@@ -3,7 +3,6 @@
 
 import json
 import os
-import shlex
 import subprocess
 from typing import Any, Dict, List, Optional, Union
 
@@ -83,111 +82,154 @@ def run_gh_command(
 
     """
     # Get token from environment
-    gh_token = get_github_token()
-
-    # Skip authentication check if token is missing - just return an error
-    # This helps with test reliability
-    if not gh_token:
+    token = get_github_token()
+    if not token:
+        print("DEBUG [GH Command]: No GitHub token found in environment")
         return {
-            "error": "GitHub token not found. Set GITHUB_TOKEN or GH_TOKEN "
-            "environment variable or run 'gh auth login'."
+            "error": "GitHub token not found in environment",
+            "details": "Set GITHUB_TOKEN or GH_TOKEN environment variable.",
         }
 
-    env = os.environ.copy()
-    # Only set GH_TOKEN in environment if we have a real token (not the
-    # "gh_auth_available" marker)
-    if gh_token and gh_token != "gh_auth_available":
-        env["GH_TOKEN"] = gh_token
-        print("Debug: Using GH_TOKEN from environment.")
-    elif gh_token == "gh_auth_available":
-        print("Debug: Relying on existing gh CLI authentication.")
-    else:  # pragma: no cover
-        # Token not found anywhere, return error early
-        return {
-            "error": "GitHub token not found. Set GITHUB_TOKEN or GH_TOKEN "
-            "environment variable or run 'gh auth login'."
-        }
+    # Redact the token for logging (mostra apenas os primeiros 4 caracteres)
+    redacted_token = token[:4] + "..." if token else "None"
+    print(f"DEBUG [GH Command]: Using token starting with '{redacted_token}'")
 
+    # Prepare the full command with 'gh' as the executable
     full_command = ["gh"] + command
+    print(f"DEBUG [GH Command]: Running command: {' '.join(full_command)}")
 
-    # Set up environment for the command
-    env = os.environ.copy()
-    env["NO_COLOR"] = "1"  # Disable color output from gh  # pragma: no cover
-
+    # Run the command using subprocess
     try:
-        print(
-            f"Running command: {' '.join(shlex.quote(str(c)) for c in full_command)}"
-        )  # Log the command
-        process = subprocess.run(
+        # Verificando se gh está acessível
+        try:
+            gh_version_cmd = ["gh", "--version"]
+            gh_version = subprocess.run(
+                gh_version_cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                env={"GITHUB_TOKEN": token} if token else None,
+            )
+            print(f"DEBUG [GH Command]: GH Version check: exit={gh_version.returncode}")
+            print(
+                f"DEBUG [GH Command]: GH Version: {gh_version.stdout.strip() if gh_version.returncode == 0 else 'Error'}"
+            )
+
+            if gh_version.returncode != 0:
+                print(
+                    f"DEBUG [GH Command]: GH Version check failed: {gh_version.stderr}"
+                )
+                return {
+                    "error": "Failed to verify GitHub CLI installation",
+                    "details": gh_version.stderr,
+                    "exit_code": gh_version.returncode,
+                }
+        except Exception as e:
+            print(f"DEBUG [GH Command]: Error checking GH version: {str(e)}")
+
+        # Verificando a autenticação do gh
+        try:
+            auth_check_cmd = ["gh", "auth", "status"]
+            auth_check = subprocess.run(
+                auth_check_cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                env={"GITHUB_TOKEN": token} if token else None,
+            )
+            print(f"DEBUG [GH Command]: Auth check: exit={auth_check.returncode}")
+            if auth_check.returncode == 0:
+                print(f"DEBUG [GH Command]: Auth status: {auth_check.stdout.strip()}")
+            else:
+                print(f"DEBUG [GH Command]: Auth failed: {auth_check.stderr}")
+                return {
+                    "error": "GitHub CLI authentication failed",
+                    "details": auth_check.stderr,
+                    "exit_code": auth_check.returncode,
+                }
+        except Exception as e:
+            print(f"DEBUG [GH Command]: Error checking auth status: {str(e)}")
+
+        # Executando o comando principal
+        result = subprocess.run(
             full_command,
             capture_output=True,
             text=True,
-            check=False,  # Don't raise CalledProcessError, handle manually
-            env=env,
+            check=False,
+            env={"GITHUB_TOKEN": token} if token else None,
         )
 
-        stdout = process.stdout.strip()
-        stderr = process.stderr.strip()
-
-        if process.returncode != 0:
-            error_message = stderr or stdout or DEFAULT_ERROR_MESSAGE
+        # Check if the command was successful
+        if result.returncode == 0:
             print(
-                f"Command failed with exit code {process.returncode}:"
-            )  # pragma: no cover
-            print(f"Stderr: {stderr}")  # pragma: no cover
-            print(f"Stdout: {stdout}")  # pragma: no cover
-            # Return structured error
-            return {  # pragma: no cover
-                "error": f"Command failed with exit code {process.returncode}",
-                "details": error_message,
-                "exit_code": process.returncode,
-                "stderr": stderr,
-                "stdout": stdout,
-            }  # pragma: no cover
+                f"DEBUG [GH Command]: Command succeeded with output length: {len(result.stdout)}"
+            )
+            stdout = result.stdout.strip()
 
-        # Attempt to parse stdout as JSON if requested in the command
-        if "--json" in command:
+            # If the output is empty, return an empty string
+            if not stdout:
+                return ""
+
+            # Try to parse the output as JSON
             try:
-                return json.loads(stdout)
-            except json.JSONDecodeError:  # pragma: no cover
+                # Check if the output is an array
+                if stdout.startswith("[") and stdout.endswith("]"):
+                    return json.loads(stdout)
+                # Check if the output is an object
+                elif stdout.startswith("{") and stdout.endswith("}"):
+                    return json.loads(stdout)
+                # Otherwise, return the raw output as a string
+                else:
+                    return stdout
+            except json.JSONDecodeError:
                 print(
-                    f"""Warning: Failed to parse JSON output for command: \
-{' '.join(shlex.quote(str(c)) for c in full_command)}. Raw output: {stdout}"""
+                    "DEBUG [GH Command]: Output is not valid JSON, returning as string"
                 )
-                # Return structured error on JSON parse failure
-                return {
-                    "error": "Expected JSON output but received non-JSON string",
-                    "raw": stdout,
-                }
+                # If the output is not valid JSON, return it as a string
+                return stdout
         else:
-            # Return raw stdout if JSON was not requested
-            return stdout
+            # Command failed
+            print(
+                f"DEBUG [GH Command]: Command failed with exit code {result.returncode}"
+            )
+            print(f"DEBUG [GH Command]: Error output: {result.stderr}")
 
-    except FileNotFoundError:  # pragma: no cover
-        error_msg = (
-            "Error: 'gh' command not found. Make sure the GitHub CLI is installed "
-            "and in your PATH."
-        )
-        print(error_msg)
-        return {"error": "Command not found", "details": error_msg}
-    except subprocess.CalledProcessError as e:  # pragma: no cover
-        # This might not be strictly necessary if check=False, but added for robustness
-        error_msg = f"Subprocess error during gh command: {e}. Stderr: {e.stderr}"
-        print(error_msg)
+            # Build a structured error response
+            error_response = {
+                "error": f"GitHub CLI command failed with exit code {result.returncode}",
+                "details": result.stderr,
+                "exit_code": result.returncode,
+                "stdout": result.stdout,  # Include stdout for debugging
+                "stderr": result.stderr,
+            }
+
+            # Try to parse stderr as JSON in case GitHub CLI returned a JSON error
+            try:
+                stderr_json = json.loads(result.stderr)
+                error_response["stderr_json"] = stderr_json
+            except json.JSONDecodeError:
+                pass  # Stderr is not JSON, that's fine
+
+            return error_response
+
+    except FileNotFoundError:
+        print("DEBUG [GH Command]: GitHub CLI not found")
+        # The 'gh' executable was not found
         return {
-            "error": "Subprocess execution error",
-            "details": error_msg,
-            "stderr": e.stderr,
-            "stdout": e.stdout,
-            "exit_code": e.returncode,
+            "error": "GitHub CLI not found",
+            "details": "Please install GitHub CLI (https://cli.github.com/)",
         }
-    except Exception as e:  # pragma: no cover
-        error_msg = f"An unexpected error occurred during gh command execution: {e}"
-        print(error_msg)
-        # Consider logging the full traceback here
-        # import traceback
-        # traceback.print_exc()
-        return {"error": "Unexpected execution error", "details": str(e)}
+    except Exception as e:
+        # Handle any other exceptions
+        import traceback
+
+        error_trace = traceback.format_exc()
+        print(f"DEBUG [GH Command]: Unexpected error: {str(e)}")
+        print(f"DEBUG [GH Command]: Traceback: {error_trace}")
+        return {
+            "error": f"Unexpected error: {str(e)}",
+            "details": error_trace,
+        }
 
 
 # --- Parameter Resolution ---

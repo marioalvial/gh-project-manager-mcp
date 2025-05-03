@@ -1,0 +1,47 @@
+[run]
+source = src/gh_project_manager_mcp
+omit =
+    # Exclude main entry point since it's just bootstrapping code
+    src/server.py
+    
+    # Exclude tests
+    */tests/*
+    
+    # Exclude any other non-production files
+    */venv/*
+    setup.py
+    conftest.py
+
+[report]
+exclude_lines =
+    # Skip any pragma comments
+    pragma: no cover
+    
+    # Skip defensive assertion code
+    raise NotImplementedError
+    
+    # Skip abstract methods
+    @abstractmethod
+    
+    # Skip type checking blocks
+    if TYPE_CHECKING:
+    
+    # Skip main execution guard
+    if __name__ == .__main__.:
+    
+    # Skip debug-only code
+    def __repr__
+    
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+    
+    # Don't complain about code that explicitly raises errors for testing
+    def __bootstrap__
+    
+    # Don't complain if non-runnable code isn't run
+    if 0:
+    if False:
+
+[html]
+directory = htmlcov 
