@@ -127,6 +127,7 @@ else
 	fi
 endif
 	@echo "Container $(DOCKER_CONTAINER_NAME) started on port 8191. Use 'make stop-docker' to stop."
+	@echo "View container logs with: docker logs $(DOCKER_CONTAINER_NAME) -f"
 
 # Usage: make start-docker [GH_TOKEN=your_token]
 # Assumes 'make docker-build' has been run previously.
@@ -149,6 +150,7 @@ else
 	fi
 endif
 	@echo "Container $(DOCKER_CONTAINER_NAME) started on port 8191. Use 'make stop-docker' to stop."
+	@echo "View container logs with: docker logs $(DOCKER_CONTAINER_NAME) -f"
 
 # Usage: make run-local [GH_TOKEN=your_token]
 run-local:
@@ -181,6 +183,7 @@ integration-test:
 		docker run -d --name $(DOCKER_CONTAINER_NAME) -p 8191:8191 -e GH_TOKEN="dummy-token-for-tests" $(DOCKER_IMAGE_NAME):latest; \
 	fi
 	@echo "Waiting for server to start..."
+	@echo "View container logs with: docker logs $(DOCKER_CONTAINER_NAME) -f"
 	@for i in $$(seq 1 10); do \
 		if curl -s http://localhost:8191/health > /dev/null; then \
 			echo "Server started successfully."; \
