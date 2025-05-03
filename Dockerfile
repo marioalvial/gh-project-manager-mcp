@@ -67,4 +67,4 @@ EXPOSE 8191
 ENV PYTHONUNBUFFERED=1
 
 # Define the command to run the application
-CMD ["python", "-m", "gh_project_manager_mcp.server"]
+CMD ["python", "-m", "gh_project_manager_mcp", "stdio"]
