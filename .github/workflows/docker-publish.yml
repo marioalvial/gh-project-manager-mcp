@@ -15,6 +15,11 @@ env:
 jobs:
   semantic-release:
     runs-on: ubuntu-latest
+    # Add permissions to create releases, commit, and push
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     outputs:
       new_release_published: ${{ steps.semantic.outputs.released }}
       new_release_version: ${{ steps.semantic.outputs.version }}
@@ -31,6 +36,7 @@ jobs:
         uses: python-semantic-release/python-semantic-release@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          root_options: -v
 
   build-and-push:
     needs: semantic-release
