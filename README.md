@@ -99,37 +99,8 @@ The server exposes the following `gh` command functionalities as MCP tools.
     *   `issue_identifier`: Issue number or URL (number or string, required)
     *   `skip_confirmation`: Skip the confirmation prompt (boolean, optional, default: false)
 
-*   **mcp_github_create_issue_branch** - Create a branch from an issue (`gh issue develop`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `issue_identifier`: Issue number or URL (number or string, required)
-    *   `branch_name`: Name for the new branch (string, optional)
-    *   `checkout`: Checkout the new branch locally (boolean, optional, default: false)
-    *   `base_branch`: Base branch to create from (string, optional)
-
-*   **mcp_github_list_issue_linked_branches** - List branches linked to an issue (`gh issue develop --list`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `issue_identifier`: Issue number or URL (number or string, required)
-
 *   **mcp_github_status_issue** - Show issue/PR status for the current branch/repo (`gh issue status`).
     *   *(No parameters)*
-
-*   **mcp_github_transfer_issue** - Transfer an issue to another repository (`gh issue transfer`).
-    *   `owner`: Current repository owner (string, required)
-    *   `repo`: Current repository name (string, required)
-    *   `issue_identifier`: Issue number or URL (number or string, required)
-    *   `destination_repo`: Target repository in 'owner/repo' format (string, required)
-
-*   **mcp_github_unlock_issue** - Unlock an issue conversation (`gh issue unlock`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `issue_identifier`: Issue number or URL (number or string, required)
-
-*   **mcp_github_unpin_issue** - Unpin an issue (`gh issue unpin`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `issue_identifier`: Issue number or URL (number or string, required)
 
 *   **mcp_github_edit_issue** - Edit issue metadata (`gh issue edit`).
     *   `owner`: Repository owner (string, required)
@@ -151,17 +122,6 @@ The server exposes the following `gh` command functionalities as MCP tools.
     *   `issue_identifier`: Issue number or URL (number or string, required)
     *   `comment`: Comment to add upon reopening (string, optional)
 
-*   **mcp_github_pin_issue** - Pin an issue (`gh issue pin`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `issue_identifier`: Issue number or URL (number or string, required)
-
-*   **mcp_github_lock_issue** - Lock an issue conversation (`gh issue lock`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `issue_identifier`: Issue number or URL (number or string, required)
-    *   `reason`: Reason for locking ('off-topic', 'resolved', 'spam', 'too heated') (string, optional)
-
 ### Pull Requests
 
 *   **mcp_github_create_pull_request** - Create a new pull request (`gh pr create`).
@@ -179,32 +139,11 @@ The server exposes the following `gh` command functionalities as MCP tools.
 *   **mcp_github_list_pull_requests** - List pull requests (`gh pr list`).
     *   `owner`: Repository owner (string, required)
     *   `repo`: Repository name (string, required)
-    *   `pr_state`: Filter by state ('open', 'closed', 'all', 'merged') (string, optional)
-    *   `pr_labels`: Filter by labels (array of strings, optional)
+    *   `state`: Filter by state ('open', 'closed', 'all', 'merged') (string, optional)
+    *   `labels`: Filter by labels (array of strings, optional)
     *   `base`: Filter by base branch (string, optional)
     *   `head`: Filter by head branch (string, optional)
-    *   `pr_limit`: Maximum number of PRs to return (number, optional)
-
-*   **mcp_github_get_pull_request** - Get details of a specific pull request (`gh pr view --json ...`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `pull_number`: Pull request number (number, required)
-
-*   **mcp_github_merge_pull_request** - Merge a pull request (`gh pr merge`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `pull_number`: Pull request number (number, required)
-    *   `merge_method`: Merge method ('merge', 'squash', 'rebase') (string, optional)
-    *   `delete_branch`: Delete head branch after merge (boolean, optional, default: true based on config)
-    *   `commit_title`: Title for merge commit (string, optional)
-    *   `commit_message`: Body for merge commit (string, optional, cannot use with rebase)
-
-*   **mcp_github_checks_pull_request** - Show status of PR checks (`gh pr checks`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `pr_identifier`: PR number, URL, or branch name (number or string, optional, defaults to current branch)
-    *   `fail_fast`: Exit early if any check fails (boolean, optional, default: false)
-    *   `required`: Only show required checks (boolean, optional, default: false)
+    *   `limit`: Maximum number of PRs to return (number, optional)
 
 *   **mcp_github_checkout_pull_request** - Check out a PR locally (`gh pr checkout`).
     *   `owner`: Repository owner (string, required)
@@ -254,12 +193,6 @@ The server exposes the following `gh` command functionalities as MCP tools.
     *   `add_reviewers`: Usernames or team names to add as reviewers (array of strings, optional)
     *   `remove_reviewers`: Usernames or team names to remove as reviewers (array of strings, optional)
 
-*   **mcp_github_lock_pull_request** - Lock PR conversation (`gh pr lock`).
-    *   `owner`: Repository owner (string, required)
-    *   `repo`: Repository name (string, required)
-    *   `pr_identifier`: PR number, URL, or branch name (number or string, required)
-    *   `reason`: Reason for locking ('off-topic', 'resolved', 'spam', 'too heated') (string, optional)
-
 *   **mcp_github_ready_pull_request** - Mark a PR as ready for review (`gh pr ready`).
     *   `owner`: Repository owner (string, required)
     *   `repo`: Repository name (string, required)
@@ -275,58 +208,24 @@ The server exposes the following `gh` command functionalities as MCP tools.
     *   `owner`: Repository owner (string, required)
     *   `repo`: Repository name (string, required)
     *   `pr_identifier`: PR number, URL, or branch name (number or string, required)
-    *   `action`: Review action ('approve', 'request-changes', 'comment') (string, required)
-    *   `body`: Review comment text (string, optional but required if `body_file` is not set and action is 'comment' or 'request-changes')
-    *   `body_file`: File containing review comment text (string, optional but required if `body` is not set and action is 'comment' or 'request-changes')
+    *   `action`: Review action ('approve', 'request_changes', 'comment') (string, required)
+    *   `body`: Review comment text (string, optional but required if `body_file` is not set and action is 'comment' or 'request_changes')
+    *   `body_file`: File containing review comment text (string, optional but required if `body` is not set and action is 'comment' or 'request_changes')
 
 *   **mcp_github_status_pull_request** - Show status of relevant PRs (`gh pr status`).
     *   *(No parameters)*
 
-*   **mcp_github_unlock_pull_request** - Unlock PR conversation (`gh pr unlock`).
+*   **mcp_github_update_branch_pull_request** - Update a PR branch with latest changes from the base branch (`gh pr update-branch`).
     *   `owner`: Repository owner (string, required)
     *   `repo`: Repository name (string, required)
-    *   `pr_identifier`: PR number, URL, or branch name (number or string, required)
+    *   `pr_identifier`: PR number, URL, or branch name (number or string, optional, defaults to current branch)
+    *   `rebase`: Use rebase instead of merge (boolean, optional, default: false)
 
 *   **mcp_github_view_pull_request** - View a PR in the terminal or browser (`gh pr view`).
     *   `owner`: Repository owner (string, required)
     *   `repo`: Repository name (string, required)
     *   `pr_identifier`: PR number, URL, or branch name (number or string, required)
     *   `comments`: View PR comments (boolean, optional, default: false)
-    *   `web`: Open PR in the browser (boolean, optional, default: false)
-
-### Projects
-
-*   **mcp_github_copy_project** - Copy a project (`gh project copy`).
-    *   `project_id`: Project number or URL to copy (number or string, required)
-    *   `target_owner`: Owner (user or org) to copy the project to (string, required)
-    *   `new_title`: New title for the copied project (string, optional)
-    *   `source_owner`: Owner of the source project (if not inherent in `project_id` URL) (string, optional)
-
-*   **mcp_github_create_project** - Create a project (`gh project create`).
-    *   `owner`: Owner (user or org) for the new project (string, required)
-    *   `title`: Title for the new project (string, required)
-
-*   **mcp_github_delete_project** - Delete a project (`gh project delete`).
-    *   `project_id`: Project number or URL to delete (number or string, required)
-    *   `owner`: Owner (user or org) of the project (if not inherent in `project_id` URL) (string, optional)
-
-*   **mcp_github_edit_project** - Edit project metadata (`gh project edit`).
-    *   `project_id`: Project number or URL to edit (number or string, required)
-    *   `owner`: Owner (user or org) of the project (string, optional)
-    *   `title`: New title (string, optional)
-    *   `description`: New description (string, optional)
-    *   `visibility`: New visibility ('public' or 'private') (string, optional)
-    *   `readme`: New README content (string, optional)
-
-*   **mcp_github_list_projects** - List projects (`gh project list`).
-    *   `owner`: Owner (user or org) to list projects for (string, optional)
-    *   `limit`: Maximum number of projects to return (number, optional)
-    *   `closed`: Include closed projects (boolean, optional, default: false)
-
-*   **mcp_github_view_project** - View project details (`gh project view`).
-    *   `project_id`: Project number or URL to view (number or string, required)
-    *   `owner`: Owner (user or org) of the project (string, optional)
-    *   `web`: Open project in the browser (boolean, optional, default: false)
 
 ### Project Fields
 
@@ -360,6 +259,12 @@ The server exposes the following `gh` command functionalities as MCP tools.
     *   `owner`: Owner (user or org) of the project (string, optional)
     *   `undo`: Unarchive the item instead of archiving (boolean, optional, default: false)
 
+*   **mcp_github_create_project_item** - Create a draft issue in a project (`gh project item-create`).
+    *   `project_id`: Project number or URL (number or string, required)
+    *   `owner`: Owner (user or org) of the project (string, required)
+    *   `title`: Title for the draft issue (string, required)
+    *   `body`: Body for the draft issue (string, optional)
+
 *   **mcp_github_delete_project_item** - Delete an item from a project (`gh project item-delete`).
     *   `item_id`: ID of the item to delete (string, required)
     *   `project_id`: Project number or URL containing the item (number or string, optional)
@@ -381,6 +286,11 @@ The server exposes the following `gh` command functionalities as MCP tools.
     *   `project_id`: Project number or URL (number or string, required)
     *   `owner`: Owner (user or org) of the project (string, optional)
     *   `limit`: Maximum number of items to return (number, optional)
+
+*   **mcp_github_view_project** - View project details (`gh project view`).
+    *   `project_id`: Project number or URL to view (number or string, required)
+    *   `owner`: Owner (user or org) of the project (string, optional)
+    *   `web`: Open project in the browser (boolean, optional, default: false)
 
 ### Repositories
 
@@ -461,6 +371,26 @@ You can configure default behaviors or provide necessary context by setting envi
 *   `DEFAULT_REPO_LIST_LIMIT`: Default limit for `gh repo list`. Default: `30`.
 *   `DEFAULT_REPO_LIST_VISIBILITY`: Default visibility filter for `gh repo list` (`public`, `private`, `internal`). Default: `None`.
 
+### Using a .env File
+
+For convenience, you can create a `.env` file in the root directory of this project to store your environment variables. The Docker container will automatically use these variables when started with `make run-docker` or `make start-docker`.
+
+Example `.env` file content:
+```
+# GitHub Authentication
+GH_TOKEN=your_github_token_here
+
+# Server Configuration
+MCP_SERVER_HOST=0.0.0.0
+MCP_SERVER_PORT=8191
+
+# Default Settings
+DEFAULT_ISSUE_ASSIGNEE=@me
+MCP_GITHUB_DEFAULT_BASE_BRANCH=main
+```
+
+This approach is especially useful when you have multiple environment variables to configure.
+
 ## Development
 
 Instructions for setting up a local development environment if you wish to contribute or modify the server.
@@ -483,12 +413,21 @@ Instructions for setting up a local development environment if you wish to contr
     ```bash
     python -m src.gh_project_manager_mcp.server
     ```
-5.  **Testing:** Uses `pytest`. Run tests with:
+5.  **Testing:**
+
+    Run different test types:
     ```bash
-    make test
-    # or directly
-    poetry run pytest
+    make unit-test       # Run only unit tests (no Docker needed)
+    make integration-test # Run integration tests with a dummy token (no real token needed)
+    make test            # Run all tests (unit + integration)
     ```
+
+    You can pass additional pytest arguments:
+    ```bash
+    make unit-test args="-v"
+    make integration-test args="-v"
+    ```
+
 6.  **Linting/Formatting:** Uses `ruff`.
     ```bash
     make format

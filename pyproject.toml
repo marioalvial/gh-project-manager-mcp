@@ -17,12 +17,13 @@ description = ""
 authors = ["Mário Alvial <mse.alvial@gmail.com>"]
 readme = "README.md"
 packages = [{include = "gh_project_manager_mcp", from = "src"}]
-dependencies = { python = ">=3.11", mcp = {version = "^1.6.0", extras = ["cli"]} }
+dependencies = { python = ">=3.11", mcp = {version = "^1.6.0", extras = ["cli"]}, uvicorn = ">=0.23.1", starlette = ">=0.36.0" }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
 pytest-mock = "^3.14.0"
 pytest-cov = "^5.0.0"
+pytest-asyncio = "^0.23.5"
 # black = "^25.1.0"  # Black can be removed as Ruff handles formatting
 ruff = "^0.5.1" # Or latest version
 
@@ -50,3 +51,49 @@ select = ["E", "F", "W", "I", "D"]
 # Configure formatter options if needed (defaults match Black mostly)
 # quote-style = "double"
 # indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+markers = [
+    "asyncio: mark a test as an asyncio coroutine"
+]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["src/gh_project_manager_mcp"]
+omit = [
+    "src/server.py",
+    "tests/*",
+    "**/__pycache__/*",
+    "**/.pytest_cache/*",
+    "**/venv/*",
+    "**/site-packages/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    # Skip any pragma comments
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise NotImplementedError",
+    "raise ImportError",
+    "except ImportError",
+    "if 0:",
+    "if False:",
+    # Skip print statements used for warnings/debugging
+    "print\\(",
+    "print\\s*\\(",
+    # Skip abstract methods
+    "@abstractmethod",
+    # Skip code marked as not implemented yet
+    "# TODO:",
+    "# FIXME:",
+    "NotImplementedError",
+]

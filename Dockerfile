@@ -20,18 +20,19 @@ RUN wget https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VER
 # Install Poetry
 RUN pip install poetry==1.8.3
 
+# Configure Poetry to install dependencies system-wide (no virtualenv)
+RUN poetry config virtualenvs.create false
+
 # Add Poetry's install location to PATH
 ENV PATH="/root/.local/bin:${PATH}"
-
-# DO NOT configure global install - let Poetry create a venv
 
 # Copy dependency definitions FIRST to leverage Docker cache
 COPY pyproject.toml poetry.lock ./
 
-# Install project dependencies using Poetry (into venv)
-# Using --no-dev to install only production dependencies
+# Regenerate the lock file and install dependencies
+# Using --only main to install only production dependencies
 # Using --no-interaction --no-ansi for non-interactive environments
-RUN poetry install --no-interaction --no-ansi --no-dev
+RUN poetry lock && poetry install --no-interaction --no-ansi --only main
 
 # Copy the rest of the application source code
 COPY src/gh_project_manager_mcp ./gh_project_manager_mcp

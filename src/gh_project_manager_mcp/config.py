@@ -39,7 +39,8 @@ TOOL_PARAM_CONFIG: Dict[str, Dict[str, Dict[str, Any]]] = {
         "limit": {"env_var": "DEFAULT_ISSUE_LIST_LIMIT", "default": 30, "type": "int"},
         # 'assignee' and 'labels' for list can reuse the create definitions above
         # --- get_github_issue ---
-        # No configurable defaults for get_github_issue (owner, repo, issue_number are mandatory)
+        # No configurable defaults for get_github_issue (owner, repo,
+        # issue_number are mandatory)
         "close_comment": {"env_var": None, "default": None, "type": "str"},
         "close_reason": {
             "env_var": None,
@@ -124,15 +125,6 @@ TOOL_PARAM_CONFIG: Dict[str, Dict[str, Dict[str, Any]]] = {
         "status": {
             "env_var": "DEFAULT_PROJECT_ITEM_STATUS",
             "default": "to-do",
-            "type": "str",
-        },
-    },
-    "repo": {
-        # --- list_github_repos ---
-        "limit": {"env_var": "DEFAULT_REPO_LIST_LIMIT", "default": 30, "type": "int"},
-        "visibility": {
-            "env_var": "DEFAULT_REPO_LIST_VISIBILITY",
-            "default": None,
             "type": "str",
         },
     },
@@ -265,11 +257,36 @@ TOOL_PARAM_CONFIG: Dict[str, Dict[str, Dict[str, Any]]] = {
 
 # Function to get GitHub token (remains the same)
 def get_github_token() -> str | None:
-    """Retrieve the GitHub token from the environment.
+    """Retrieve the GitHub token from the environment or auth status.
+
+    Looks in the following places in order:
+    1. GITHUB_TOKEN environment variable
+    2. GH_TOKEN environment variable
+    3. Current gh auth status (if authenticated)
 
     Returns
     -------
-        The value of the GH_TOKEN environment variable, or None if not set.
+        str: The token or "gh_auth_available" if authenticated via gh CLI
+        None: If no token found and not authenticated
 
     """
-    return os.environ.get("GH_TOKEN")
+    # Check for token in environment variables
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+
+    # If no token in env vars, try to get from gh auth status
+    if not token:
+        try:
+            import subprocess
+
+            # Check if gh is authenticated
+            result = subprocess.run(
+                ["gh", "auth", "status"], capture_output=True, text=True, check=False
+            )
+            if result.returncode == 0:
+                print("gh auth status successful, using existing token")
+                # We're authenticated, return a marker value
+                return "gh_auth_available"
+        except Exception as e:
+            print(f"Error checking gh auth status: {e}")
+
+    return token

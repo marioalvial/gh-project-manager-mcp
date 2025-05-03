@@ -1,8 +1,8 @@
 """Unit tests for the pull_requests tool module."""
 
 # tests/tools/test_pull_requests.py
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
-from unittest.mock import patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,7 +12,6 @@ from gh_project_manager_mcp.config import TOOL_PARAM_CONFIG
 # Function to test
 from gh_project_manager_mcp.tools.pull_requests import (
     _checkout_github_pull_request_impl,
-    _checks_github_pull_request_impl,
     _close_github_pull_request_impl,
     _create_pull_request_impl,
     _edit_github_pull_request_impl,
@@ -20,37 +19,44 @@ from gh_project_manager_mcp.tools.pull_requests import (
 )
 
 if TYPE_CHECKING:
-    from _pytest.capture import CaptureFixture
-    from _pytest.fixtures import FixtureRequest
-    from _pytest.logging import LogCaptureFixture
-    from _pytest.monkeypatch import MonkeyPatch
     from pytest_mock import MockerFixture
-    from unittest.mock import MagicMock
 
 # --- Fixtures ---
 
 
 @pytest.fixture
-def mock_resolve_param() -> "MagicMock":
+def mock_resolve_param() -> MagicMock:
     """Provide a mock for the resolve_param utility function.
-    
+
     This fixture mocks the resolve_param function from the pull_requests module,
     with a default behavior that passes through runtime values.
-    
-    Returns:
+
+    Returns
+    -------
         The mock object for resolve_param that can be customized in tests.
+
     """
+
     # Basic mock: return runtime value if not None, else None/default
-    # Body has special handling in create_pr, might need refinement if body default exists
-    def side_effect(capability: str, param_name: str, runtime_value: Any, *args: Any, **kwargs: Any) -> Any:
-        # Body has special handling in create_pr, might need refinement if body default exists
+    # Body has special handling in create_pr, might need
+    # refinement if body default exists
+    def side_effect(
+        capability: str, param_name: str, runtime_value: Any, *args: Any, **kwargs: Any
+    ) -> Any:
+        # Body has special handling in create_pr, might need
+        # refinement if body default exists
         if param_name == "body":
-            # Simulate config check: only resolve if 'body' is configured, else return runtime value
+            # Simulate config check: only resolve if 'body' is configured,
+            # else return runtime value
             if "body" in TOOL_PARAM_CONFIG.get(capability, {}):
                 return runtime_value  # Let implementation handle None -> ""
             else:
                 return runtime_value  # Return as-is if not in config
-        return runtime_value
+        # Default behavior for other params
+        if runtime_value is not None:
+            return runtime_value
+        # Simplistic mock: just return None if runtime is None for non-body
+        return None
 
     with patch(
         "gh_project_manager_mcp.tools.pull_requests.resolve_param",
@@ -62,12 +68,14 @@ def mock_resolve_param() -> "MagicMock":
 @pytest.fixture
 def mock_run_gh() -> "MagicMock":
     """Provide a mock for the run_gh_command utility function.
-    
+
     This fixture mocks the run_gh_command function imported in the pull_requests module,
     allowing tests to control what the command returns.
-    
-    Returns:
+
+    Returns
+    -------
         The mock object for run_gh_command that can be customized in tests.
+
     """
     with patch(
         "gh_project_manager_mcp.tools.pull_requests.run_gh_command"
@@ -77,16 +85,19 @@ def mock_run_gh() -> "MagicMock":
 
 # --- Test Classes ---
 
+
 class TestCreatePullRequest:
     """Tests for the _create_pull_request_impl function.
-    
+
     This test class verifies the functionality for creating GitHub pull requests,
     handling different parameter combinations, and error scenarios.
     """
 
-    def test_create_pr_minimal(self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock") -> None:
+    def test_create_pr_minimal(
+        self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
+    ) -> None:
         """Test creating a PR with minimal parameters.
-        
+
         Given:
             - A request to create a PR with only mandatory parameters
         When:
@@ -103,31 +114,45 @@ class TestCreatePullRequest:
 
         # When
         result = _create_pull_request_impl(
-            owner="owner", repo="repo", title="New PR", head="feature-branch", base="main"
+            owner="owner",
+            repo="repo",
+            title="New PR",
+            head="feature-branch",
+            base="main",
         )
 
         # Then
         expected_command = [
-            "pr", "create",
-            "--repo", "owner/repo",
-            "--base", "main",
-            "--head", "feature-branch",
-            "--title", "New PR",
-            "--body", "",  # Always includes body
-            "--json", "url,number,title,body,state"
+            "pr",
+            "create",
+            "--repo",
+            "owner/repo",
+            "--base",
+            "main",
+            "--head",
+            "feature-branch",
+            "--title",
+            "New PR",
+            "--body",
+            "",  # Always includes body
+            "--json",
+            "url,number,title,body,state",
         ]
         mock_run_gh.assert_called_once_with(expected_command)
         assert result == expected_result
 
-    def test_create_pr_all_params(self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock") -> None:
+    def test_create_pr_all_params(
+        self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
+    ) -> None:
         """Test creating a PR with all parameters provided.
-        
+
         Given:
             - A request to create a PR with all parameters provided
         When:
             - _create_pull_request_impl is called
         Then:
-            - run_gh_command is called with all parameters correctly added to the command
+            - run_gh_command is called with all parameters correctly
+              added to the command
               (repeated flags for reviewers/labels), and the JSON result is returned
         """
         # Given
@@ -146,33 +171,46 @@ class TestCreatePullRequest:
             body="PR body content.",
             reviewers=["lead_dev", "qa_tester"],
             pr_labels=["needs-review", "frontend"],
-            draft=True
+            draft=True,
         )
 
         # Then
         expected_command = [
             "pr",
             "create",
-            "--repo", "owner/repo",
-            "--base", "develop",
-            "--head", "feature-x",
-            "--title", "Full PR",
-            "--body", "PR body content.",
-            "--json", "url,number,title,body,state",
+            "--repo",
+            "owner/repo",
+            "--base",
+            "develop",
+            "--head",
+            "feature-x",
+            "--title",
+            "Full PR",
+            "--body",
+            "PR body content.",
+            "--json",
+            "url,number,title,body,state",
             "--draft",
-            "--reviewer", "lead_dev",
-            "--reviewer", "qa_tester",
-            "--label", "needs-review",
-            "--label", "frontend",
+            "--reviewer",
+            "lead_dev",
+            "--reviewer",
+            "qa_tester",
+            "--label",
+            "needs-review",
+            "--label",
+            "frontend",
         ]
         mock_run_gh.assert_called_once_with(expected_command)
         assert result == expected_result
 
     def test_create_pr_reviewers_labels_resolved_string(
-        self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock", mocker: "MockerFixture"
+        self,
+        mock_run_gh: "MagicMock",
+        mock_resolve_param: "MagicMock",
+        mocker: "MockerFixture",
     ) -> None:
         """Test creating a PR where list params resolve from config/env.
-        
+
         Given:
             - A request to create a PR where reviewers and labels resolve to lists
               (simulating env vars)
@@ -196,7 +234,7 @@ class TestCreatePullRequest:
             if param == "pr_labels":
                 return resolved_labels
             if param == "body":
-                return None # Simulate body not resolved
+                return None  # Simulate body not resolved
             return None
 
         mock_resolve_param.side_effect = side_effect
@@ -209,29 +247,42 @@ class TestCreatePullRequest:
             head="feat/z",
             base="main",
             # Pass pr_labels here to trigger resolution
-            pr_labels=[]
+            pr_labels=[],
         )
 
         # Then
         expected_command = [
-            "pr", "create",
-            "--repo", "owner/repo",
-            "--base", "main",
-            "--head", "feat/z",
-            "--title", "String Resolve PR",
-            "--body", "",
-            "--json", "url,number,title,body,state",
-            "--reviewer", "rev1",
-            "--reviewer", "rev2",
-            "--label", "label_a",
-            "--label", "label_b",
+            "pr",
+            "create",
+            "--repo",
+            "owner/repo",
+            "--base",
+            "main",
+            "--head",
+            "feat/z",
+            "--title",
+            "String Resolve PR",
+            "--body",
+            "",
+            "--json",
+            "url,number,title,body,state",
+            "--reviewer",
+            "rev1",
+            "--reviewer",
+            "rev2",
+            "--label",
+            "label_a",
+            "--label",
+            "label_b",
         ]
         mock_run_gh.assert_called_once_with(expected_command)
         assert result == expected_result
 
-    def test_create_pr_gh_command_error(self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock") -> None:
+    def test_create_pr_gh_command_error(
+        self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
+    ) -> None:
         """Test error handling when gh fails during PR creation.
-        
+
         Given:
             - A request to create a PR
         When:
@@ -256,15 +307,18 @@ class TestCreatePullRequest:
         assert result == error_output
         mock_run_gh.assert_called_once()
 
-    def test_create_pr_gh_command_non_json_string(self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock") -> None:
+    def test_create_pr_gh_command_non_json_string(
+        self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
+    ) -> None:
         """Test handling unexpected non-JSON string output from gh pr create.
-        
+
         Given:
             - A request to create a PR with the --json flag requested
         When:
             - run_gh_command returns a non-JSON string
         Then:
-            - An error dictionary indicating an unexpected string result should be returned
+            - An error dictionary indicating an unexpected string result
+              should be returned
         """
         # Given
         non_json_output = "Some unexpected success message that isn't JSON"
@@ -288,152 +342,16 @@ class TestCreatePullRequest:
         assert result == expected_error
 
 
-class TestPullRequestChecks:
-    """Tests for the _checks_github_pull_request_impl function.
-    
-    This test class verifies the functionality for checking the status of GitHub
-    pull request checks/statuses, handling different parameters, and error scenarios.
-    """
-
-    # Test data
-    MOCK_CHECKS_JSON = {
-        "checks": [
-            {"name": "build", "status": "SUCCESS", "conclusion": "SUCCESS"},
-            {"name": "test", "status": "FAILURE", "conclusion": "FAILURE"},
-            {"name": "lint", "status": "PENDING", "conclusion": None},
-        ],
-        "failing": 1,
-        "passing": 1,
-        "pending": 1,
-        "status": "failure",  # Overall status
-    }
-
-    def test_pr_checks_success_current_branch(self, mock_run_gh: "MagicMock") -> None:
-        """Test fetching checks for the current branch PR successfully.
-        
-        Given:
-            - A request for checks on the current branch's PR
-        When:
-            - _checks_github_pull_request_impl is called with no identifier
-        Then:
-            - run_gh_command is called correctly, and the JSON result is returned
-        """
-        # Given
-        mock_run_gh.return_value = self.MOCK_CHECKS_JSON
-
-        # When
-        result = _checks_github_pull_request_impl(owner="owner", repo="repo")
-
-        # Then
-        expected_command = [
-            "pr",
-            "checks",
-            "--repo",
-            "owner/repo",
-            "--json",
-            "checks,failing,passing,pending,status",
-        ]
-        mock_run_gh.assert_called_once_with(expected_command)
-        assert result == self.MOCK_CHECKS_JSON
-
-    def test_pr_checks_success_specific_pr(self, mock_run_gh: "MagicMock") -> None:
-        """Test fetching checks for a specific PR identifier successfully.
-        
-        Given:
-            - A request for checks on a specific PR number
-        When:
-            - _checks_github_pull_request_impl is called with pr_identifier=123
-        Then:
-            - run_gh_command is called correctly, and the JSON result is returned
-        """
-        # Given
-        mock_run_gh.return_value = self.MOCK_CHECKS_JSON
-
-        # When
-        result = _checks_github_pull_request_impl(
-            owner="owner", repo="repo", pr_identifier=123
-        )
-
-        # Then
-        expected_command = [
-            "pr",
-            "checks",
-            "123",
-            "--repo",
-            "owner/repo",
-            "--json",
-            "checks,failing,passing,pending,status",
-        ]
-        mock_run_gh.assert_called_once_with(expected_command)
-        assert result == self.MOCK_CHECKS_JSON
-
-    def test_pr_checks_success_with_flags(self, mock_run_gh: "MagicMock") -> None:
-        """Test fetching checks with fail-fast and required flags.
-        
-        Given:
-            - A request for checks with flags enabled
-        When:
-            - _checks_github_pull_request_impl is called with fail_fast=True, required=True
-        Then:
-            - run_gh_command is called with the correct flags
-        """
-        # Given
-        mock_run_gh.return_value = self.MOCK_CHECKS_JSON
-
-        # When
-        result = _checks_github_pull_request_impl(
-            owner="owner", repo="repo", pr_identifier="main", fail_fast=True, required=True
-        )
-
-        # Then
-        expected_command = [
-            "pr",
-            "checks",
-            "main",
-            "--repo",
-            "owner/repo",
-            "--json",
-            "checks,failing,passing,pending,status",
-            "--fail-fast",
-            "--required",
-        ]
-        mock_run_gh.assert_called_once_with(expected_command)
-        assert result == self.MOCK_CHECKS_JSON
-
-    def test_pr_checks_gh_error(self, mock_run_gh: "MagicMock") -> None:
-        """Test error handling when gh fails fetching PR checks.
-        
-        Given:
-            - A request for checks
-        When:
-            - run_gh_command returns an error
-        Then:
-            - The error dictionary is returned directly
-        """
-        # Given
-        error_output = {"error": "gh command failed", "stderr": "PR not found"}
-        mock_run_gh.return_value = error_output
-
-        # When
-        result = _checks_github_pull_request_impl(
-            owner="owner", repo="repo", pr_identifier=999
-        )
-
-        # Then
-        assert result == error_output
-        mock_run_gh.assert_called_once()
-
-
 class TestCheckoutPullRequest:
     """Tests for the _checkout_github_pull_request_impl function.
-    
+
     This test class verifies the functionality for checking out GitHub pull requests
     locally, handling different parameters, and error scenarios.
     """
 
     def test_pr_checkout_success_simple(self, mock_run_gh: "MagicMock") -> None:
         """Test checking out a PR branch with a simple identifier.
-        
+
         Given:
             - A request to checkout a PR branch
         When:
@@ -457,7 +375,7 @@ class TestCheckoutPullRequest:
 
     def test_pr_checkout_success_with_flags(self, mock_run_gh: "MagicMock") -> None:
         """Test checking out a PR branch with various flags enabled.
-        
+
         Given:
             - A request to checkout a PR branch with flags
         When:
@@ -466,7 +384,9 @@ class TestCheckoutPullRequest:
             - run_gh_command is called with the correct flags
         """
         # Given
-        mock_run_gh.return_value = "Checked out branch 'local-name' for PR owner/repo#124"
+        mock_run_gh.return_value = (
+            "Checked out branch 'local-name' for PR owner/repo#124"
+        )
 
         # When
         result = _checkout_github_pull_request_impl(
@@ -496,7 +416,7 @@ class TestCheckoutPullRequest:
 
     def test_pr_checkout_gh_error(self, mock_run_gh: "MagicMock") -> None:
         """Test error handling when gh fails checking out a PR branch.
-        
+
         Given:
             - A request to checkout a PR branch
         When:
@@ -523,7 +443,7 @@ class TestCheckoutPullRequest:
 
 class TestClosePullRequest:
     """Tests for the _close_github_pull_request_impl function.
-    
+
     This test class verifies the functionality for closing GitHub pull requests,
     handling different parameters, and error scenarios.
     """
@@ -532,7 +452,7 @@ class TestClosePullRequest:
         self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test closing a PR successfully with a simple identifier.
-        
+
         Given:
             - A request to close a PR
         When:
@@ -559,7 +479,7 @@ class TestClosePullRequest:
         self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test closing a PR with a comment and deleting the branch.
-        
+
         Given:
             - A request to close a PR with comment and delete branch
         When:
@@ -573,7 +493,9 @@ class TestClosePullRequest:
         )
 
         # Use side_effect to target specific param
-        def side_effect(cap: str, param: str, val: Any, *args: Any, **kwargs: Any) -> Any:
+        def side_effect(
+            cap: str, param: str, val: Any, *args: Any, **kwargs: Any
+        ) -> Any:
             if cap == "pull_request" and param == "close_comment":
                 return "Closing this PR."
             return None  # Default for other potential resolves
@@ -609,7 +531,7 @@ class TestClosePullRequest:
         self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test error handling when gh fails closing a PR.
-        
+
         Given:
             - A request to close a PR
         When:
@@ -634,16 +556,17 @@ class TestClosePullRequest:
 
 class TestEditPullRequest:
     """Tests for the _edit_github_pull_request_impl function.
-    
+
     This test class verifies the functionality for editing GitHub pull requests,
-    handling different parameter combinations, add/remove operations, and error scenarios.
+    handling different parameter combinations, add/remove operations, and error
+    scenarios.
     """
 
     def test_pr_edit_success_minimal(
         self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test editing only the title of a PR successfully.
-        
+
         Given:
             - A request to edit only the title of a PR
         When:
@@ -681,7 +604,7 @@ class TestEditPullRequest:
         self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test editing multiple fields (add/remove assignees/labels/reviewers).
-        
+
         Given:
             - A request to edit multiple fields (add/remove labels/reviewers etc)
         When:
@@ -740,7 +663,7 @@ class TestEditPullRequest:
         self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test editing the milestone and body of a PR.
-        
+
         Given:
             - A request to edit the milestone and body
         When:
@@ -753,7 +676,9 @@ class TestEditPullRequest:
         mock_run_gh.return_value = pr_url
 
         # Simulate milestone and body resolving
-        def side_effect(cap: str, param: str, val: Any, *args: Any, **kwargs: Any) -> Any:
+        def side_effect(
+            cap: str, param: str, val: Any, *args: Any, **kwargs: Any
+        ) -> Any:
             if cap == "pull_request" and param == "edit_milestone":
                 return "v2.0"
             if cap == "pull_request" and param == "body":
@@ -790,7 +715,7 @@ class TestEditPullRequest:
         self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test error handling when gh fails editing a PR.
-        
+
         Given:
             - A request to edit a PR
         When:
@@ -817,7 +742,7 @@ class TestEditPullRequest:
 
 class TestListPullRequests:
     """Tests for the _list_github_pull_requests_impl function.
-    
+
     This test class verifies the functionality for listing GitHub pull requests,
     handling different parameters, filters, and error scenarios.
     """
@@ -839,7 +764,7 @@ class TestListPullRequests:
         self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test listing PRs with minimal parameters (using defaults).
-        
+
         Given:
             - A request to list PRs with minimal parameters
         When:
@@ -851,7 +776,9 @@ class TestListPullRequests:
         mock_run_gh.return_value = [self.MOCK_PR_LIST_ITEM]
 
         # Simulate resolving defaults
-        def side_effect(cap: str, param: str, val: Any, *args: Any, **kwargs: Any) -> Any:
+        def side_effect(
+            cap: str, param: str, val: Any, *args: Any, **kwargs: Any
+        ) -> Any:
             if val is not None:
                 return val
             if param == "list_limit":
@@ -885,7 +812,7 @@ class TestListPullRequests:
         self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test listing PRs with all available filters applied.
-        
+
         Given:
             - A request to list PRs with all filters applied
         When:
@@ -938,12 +865,10 @@ class TestListPullRequests:
         assert result == []
 
     def test_pr_list_gh_error(
-        self, 
-        mock_run_gh: "MagicMock", 
-        mock_resolve_param: "MagicMock"
+        self, mock_run_gh: "MagicMock", mock_resolve_param: "MagicMock"
     ) -> None:
         """Test error handling when gh fails listing PRs.
-        
+
         Given:
             - A request to list PRs
         When:

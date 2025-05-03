@@ -2,4 +2,53 @@
 /tasks/
 
 # Cursor AI configuration/rules
-/.cursor/ 
+/.cursor/
+
+# IDE configuration
+/.vscode/
+/.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.coveragerc
+coverage.xml
+htmlcov/
+
+# Distribution / packaging
+/dist/
+/build/
+*.egg-info/
+
+# Environment
+.env
+.venv/
+venv/
+ENV/
+
+# OS specific
+.DS_Store 
+
+# Temporary files
+*.tmp
+*.tmp.*
+*.tmp.*.*
+*.tmp.*.*.*
+*.tmp.*.*.*.*
+*.tmp.*.*.*.*.*
+
+# Testing directories
+tmp_tests/
+.ruff_cache/
+
+# pytest
+.pytest_cache/
+
+# Cache files
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.*_cache/

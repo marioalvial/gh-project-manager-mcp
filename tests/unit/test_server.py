@@ -4,8 +4,11 @@
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import pytest
+from starlette.responses import PlainTextResponse
+
 if TYPE_CHECKING:
-    pass
+    from pytest_mock import MockerFixture
 
 
 class TestServerInitialization:
@@ -191,6 +194,68 @@ class TestServerInitialization:
                 ),
                 version="0.1.0",
             )
+
+
+class TestServerEndpoints:
+    """Tests for the server's HTTP endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_health_endpoint(self) -> None:
+        """Test the health endpoint returns OK response.
+
+        Given: A request to the health endpoint
+        When: The health function is called
+        Then: It should return a PlainTextResponse with "OK"
+        """
+        # Import the function after patching
+        from gh_project_manager_mcp.server import health
+
+        # When
+        response = await health(MagicMock())
+
+        # Then
+        assert isinstance(response, PlainTextResponse)
+        assert response.body == b"OK"
+
+
+@pytest.mark.asyncio
+async def test_main_initializes_server(mocker: "MockerFixture") -> None:
+    """Test main initializes the MCP server with correct components.
+
+    Given: Required dependencies are mocked
+    When: main() is called
+    Then: It should initialize and return a FastMCP server with tools registered
+    """
+    # Given
+    mock_fastmcp = mocker.patch("gh_project_manager_mcp.server.FastMCP")
+    mock_server_instance = MagicMock()
+    mock_fastmcp.return_value = mock_server_instance
+
+    mock_issue_tools = mocker.patch("gh_project_manager_mcp.server.issue_tools")
+    mock_pr_tools = mocker.patch("gh_project_manager_mcp.server.pr_tools")
+
+    # Mock token check
+    mocker.patch(
+        "gh_project_manager_mcp.server.gh_utils.get_github_token",
+        return_value="mock_token",
+    )
+
+    # When
+    from gh_project_manager_mcp.server import main
+
+    result = main()
+
+    # Then
+    mock_fastmcp.assert_called_once_with(
+        title="GitHub Project Manager MCP", description=mocker.ANY, version="0.1.0"
+    )
+
+    # Verify tools were registered
+    mock_issue_tools.init_tools.assert_called_once_with(mock_server_instance)
+    mock_pr_tools.init_tools.assert_called_once_with(mock_server_instance)
+
+    # Verify server instance was returned
+    assert result == mock_server_instance
 
 
 # Add other tests for server functionality as needed

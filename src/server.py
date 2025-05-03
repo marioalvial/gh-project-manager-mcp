@@ -2,11 +2,11 @@
 
 import os
 import sys
+
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 
 # Assuming correct relative imports based on project structure
-from .config import TOOL_PARAM_CONFIG
 from .tools import issues as issues_tools
 from .tools import projects as project_tools
 from .tools import pull_requests as pr_tools
@@ -15,10 +15,9 @@ from .utils import gh_utils
 
 def main():
     """Instantiate the server, register tools, and run the MCP server."""
-
     # Determine host and port inside main
     host = os.getenv("MCP_SERVER_HOST", "0.0.0.0")
-    port = int(os.getenv("MCP_SERVER_PORT", "8191")) # Default to 8191
+    port = int(os.getenv("MCP_SERVER_PORT", "8191"))  # Default to 8191
 
     print("Initializing server...")
     # Instantiate server inside main
@@ -47,7 +46,10 @@ def main():
 if __name__ == "__main__":
     # Check for GH_TOKEN before starting
     if not gh_utils.get_github_token():
-        print("Error: GH_TOKEN environment variable not set. Server cannot start.", file=sys.stderr)
+        print(
+            "Error: GH_TOKEN environment variable not set. Server cannot start.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     # Call main only when script is executed directly
     main()
