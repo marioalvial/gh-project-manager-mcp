@@ -31,58 +31,24 @@ Add the following to your client's MCP server configuration (e.g., VS Code `sett
 
 ```json
 {
-  // In VS Code settings.json, wrap this whole block in "mcp": { ... }
-  "inputs": [
-    {
-      "type": "promptString",
-      "id": "github_token",
-      "description": "GitHub Personal Access Token (Required)",
-      "password": true
-    }
-  ],
-  "servers": {
-    "gh_cli": { // You can name this server entry descriptively
+  "mcpServers": {
+    "github": {
       "command": "docker",
       "args": [
         "run",
-        "-i", // Interactive mode for MCP communication
-        "--rm", // Remove container on exit
-        // Mount gh config directory from host:
-        "-v", "${env:HOME}/.config/gh:/home/vscode/.config/gh",
-        // Pass GH_TOKEN (Mandatory):
-        "-e", "GH_TOKEN=${input:github_token}",
-        // (Optional) Pass other config environment variables (see below):
-        // "-e", "DEFAULT_ISSUE_ASSIGNEE=@me",
-        // "-e", "DEFAULT_PROJECT_TARGET=MyProject",
-        // "-e", "DEFAULT_PROJECT_OWNER=my-org",
-        "<your-docker-image-uri>" // <-- Replace with the actual Docker image URI
+        "-i",
+        "--rm",
+        "-e",
+        "GH_TOKEN",
+        "ghcr.io/github/github-mcp-server"
       ],
-      // Map environment variables from inputs or define directly:
       "env": {
-        // Map the mandatory GH_TOKEN from the input prompt defined above
-        "GH_TOKEN": "${input:github_token}",
-        // Example direct env var for optional config:
-        // "DEFAULT_ISSUE_ASSIGNEE": "@me",
-        // "DEFAULT_PROJECT_TARGET": "MyProject",
-        // "DEFAULT_PROJECT_OWNER": "my-org"
+        "GH_TOKEN": "<YOUR_TOKEN>"
       }
     }
   }
 }
 ```
-
-**Key Configuration Points:**
-
-*   **`command: "docker"`**: Specifies Docker to run the server.
-*   **`args`**:
-    *   `run -i --rm`: Standard Docker flags for interactive, temporary containers.
-    *   `-v "${env:HOME}/.config/gh:/home/vscode/.config/gh"`: **Crucial step.** Mounts your host's `gh` configuration directory into the container, allowing the server to use your existing `gh` authentication. Adjust the host path (`${env:HOME}/.config/gh`) if your configuration is stored elsewhere. The container path (`/home/vscode/.config/gh`) assumes the container runs as a non-root user like `vscode` (common in dev containers). Adjust if the Docker image uses a different user or path.
-    *   `-e VAR=value`: Use this to pass environment variables for configuration (see "Environment Variables" section below).
-    *   `<your-docker-image-uri>`: The full path to the Docker image in the registry.
-*   **`(Optional) inputs`**: Define prompts if you want the IDE to ask for values like a `GH_TOKEN`.
-*   **`(Optional) env`**: Map inputs or define static environment variables to be passed to the container.
-
-Consult your specific MCP client's documentation for the exact configuration format.
 
 ## Available Tools
 
@@ -431,7 +397,7 @@ Refer to the specific tool function definitions within your MCP client for detai
 
 ## Environment Variables for Configuration
 
-You can configure default behaviors or provide necessary context by setting environment variables when running the Docker container (using `-e VAR=value`). These correspond to optional parameters in the tool functions.
+You can configure default behaviors or provide necessary context by setting environment variables when running the Docker container (add to the `env` block). These correspond to optional parameters in the tool functions.
 
 **General:**
 
