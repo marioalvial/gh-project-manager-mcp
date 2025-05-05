@@ -1,6 +1,6 @@
 [project]
 name = "gh-project-manager-mcp"
-version = "0.4.1"
+version = "0.4.2"
 description = ""
 authors = [
     {name = "Mário Alvial", email = "mse.alvial@gmail.com"}
@@ -14,7 +14,7 @@ dependencies = [
 
 [tool.poetry]
 name = "gh-project-manager-mcp"
-version = "0.4.1"
+version = "0.4.2"
 description = ""
 authors = ["Mário Alvial <mse.alvial@gmail.com>"]
 readme = "README.md"
