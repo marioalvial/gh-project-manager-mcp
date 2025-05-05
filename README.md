@@ -77,3 +77,7 @@ The tests are designed to handle various GitHub API limitations and token permis
 Note: The tests create and manage real GitHub resources (issues, PRs, branches, etc.), so make sure to use a test repository to avoid clutter in production repositories.
 
 Test line for pull request testing - update for PR testing.
+
+## Demo PR
+
+This change demonstrates creating a PR using the MCP tools.
