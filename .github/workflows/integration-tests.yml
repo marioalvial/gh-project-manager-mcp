@@ -1,0 +1,50 @@
+name: Integration Tests
+
+on:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly at midnight on Sunday
+
+jobs:
+  integration-tests:
+    name: Run Integration Tests
+    runs-on: ubuntu-latest
+    
+    env:
+      GH_INTEGRATION_TEST_TOKEN: ${{ secrets.GH_INTEGRATION_TEST_TOKEN }}
+      GH_INTEGRATION_TEST_OWNER: "marioalvial"
+      GH_INTEGRATION_TEST_REPO: "gh-project-manager-mcp"
+      GH_INTEGRATION_TEST_PROJECT_ID: ${{ secrets.GH_INTEGRATION_TEST_PROJECT_ID }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry install
+          
+      - name: Run function call integration tests
+        run: poetry run pytest tests/integration/ -v
+        
+      # Note: Docker-based tests will be added later
+      # - name: Run Docker-based integration tests
+      #   run: poetry run pytest tests/docker_integration/ -v
+      
+      - name: Upload test logs
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: integration-test-logs
+          path: |
+            test-logs/
+            .coverage
+          retention-days: 7 

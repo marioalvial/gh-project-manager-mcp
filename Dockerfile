@@ -21,7 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml poetry.lock ./
 
 # Install dependencies
-RUN poetry lock && poetry install --no-interaction --no-ansi --only main
+RUN poetry lock && poetry install --no-interaction --no-ansi --only main \
+    && pip install "result>=0.17.0,<0.18.0" python-dotenv
 
 # Copy the application source code
 COPY src/gh_project_manager_mcp ./gh_project_manager_mcp
@@ -51,7 +52,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && wget https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.deb -O gh_cli.deb \
     && apt-get install -y --no-install-recommends ./gh_cli.deb \
     && rm gh_cli.deb \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install "result>=0.17.0,<0.18.0" python-dotenv
 
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages

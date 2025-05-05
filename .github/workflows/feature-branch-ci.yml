@@ -1,0 +1,164 @@
+name: Feature Branch CI
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff
+
+      - name: Run Ruff linting
+        run: ruff check --output-format=github .
+
+  commit-lint:
+    name: Commit Message Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install commitlint
+        run: |
+          npm install --save-dev @commitlint/cli @commitlint/config-conventional
+
+      - name: Create commitlint config
+        run: |
+          cat > commitlint.config.js << 'EOF'
+          module.exports = {
+            extends: ['@commitlint/config-conventional'],
+            rules: {
+              'type-enum': [2, 'always', ['build', 'chore', 'ci', 'docs', 'feat', 'fix', 'perf', 'refactor', 'revert', 'style', 'test']]
+            }
+          };
+          EOF
+
+      - name: Validate commit messages
+        run: npx commitlint --from=HEAD~1 --to=HEAD --verbose
+
+  unit-test:
+    name: Unit Testing
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .[dev]
+          # If the above fails, try the following line instead
+          # if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; elif [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ --cov=src/gh_project_manager_mcp --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+          
+  integration-test:
+    name: Integration Testing
+    runs-on: ubuntu-latest
+    # Only run if a GitHub token is available (typically in PRs from the main repo, not forks)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    
+    env:
+      GH_INTEGRATION_TEST_TOKEN: ${{ secrets.GH_INTEGRATION_TEST_TOKEN }}
+      GH_INTEGRATION_TEST_OWNER: "marioalvial"
+      GH_INTEGRATION_TEST_REPO: "gh-project-manager-mcp"
+      GH_INTEGRATION_TEST_PROJECT_ID: ${{ secrets.GH_INTEGRATION_TEST_PROJECT_ID }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .[dev]
+          # If the above fails, try the following line instead
+          # if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; elif [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Check for GitHub token
+        id: check_token
+        run: |
+          if [ -z "$GH_INTEGRATION_TEST_TOKEN" ]; then
+            echo "No GitHub token found, integration tests will be skipped"
+            echo "token_available=false" >> $GITHUB_OUTPUT
+          else
+            echo "GitHub token found, integration tests will run"
+            echo "token_available=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run integration tests
+        if: steps.check_token.outputs.token_available == 'true'
+        run: |
+          pytest tests/integration/ -v --cov=src/gh_project_manager_mcp --cov-append
+          
+      - name: Generate combined coverage report
+        if: steps.check_token.outputs.token_available == 'true'
+        run: |
+          coverage xml
+          
+      - name: Upload integration test coverage
+        if: steps.check_token.outputs.token_available == 'true'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+          
+      - name: Upload test logs
+        if: steps.check_token.outputs.token_available == 'true' && always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: integration-test-logs
+          path: |
+            .coverage
+          retention-days: 7 

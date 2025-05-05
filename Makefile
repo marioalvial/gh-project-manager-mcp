@@ -16,7 +16,7 @@ RESOLVED_GH_TOKEN = $(or $(GH_TOKEN),$(shell echo $$GH_TOKEN))
 # Default target executed when 'make' is run without arguments
 .DEFAULT_GOAL := help
 
-.PHONY: help install format lint test test-cov test-tool test-utils build clean docker-build run-docker stop-docker run-local run start-docker start-local diff-stats integration-test unit-test
+.PHONY: help install format lint test test-cov test-tool test-utils build clean docker-build run-docker stop-docker run-local run start-docker start-local diff-stats integration-test unit-test function-integration-test build-docker
 
 help:
 	@echo "Available commands:"
@@ -40,6 +40,7 @@ help:
 	@echo "  start-local [GH_TOKEN=...] Alias for run-local (starts server locally using Poetry)."
 	@echo "  run [GH_TOKEN=...] Alias for run-docker."
 	@echo "  diff-stats [ref=...] Show stats for lines added/modified in the current git diff."
+	@echo "  build-docker    Build the Docker image with name 'gh-project-manager-mcp:stdio'."
 	@echo ""
 	@echo "Environment Variables:"
 	@echo "  - You can create a .env file in the project root to set environment variables."
@@ -201,6 +202,17 @@ integration-test:
 	@$(MAKE) stop-docker
 	@echo "Integration tests completed successfully."
 
+# Direct function call integration tests - runs tests without Docker
+function-integration-test:
+	@echo "Running integration tests using direct function calls..."
+	@if [ -f .env ]; then \
+		echo "Loading environment variables from .env file..."; \
+		set -a; . ./.env; set +a; \
+	else \
+		echo "No .env file found. Make sure to set required environment variables manually."; \
+	fi
+	$(PYTEST) tests/integration/ -v $(args)
+
 # Usage: make diff-stats [ref=branch_or_commit]
 # Shows statistics for lines added/modified in the current git diff
 # If ref is specified, compares against that reference (branch or commit)
@@ -222,3 +234,32 @@ else
 	@echo "  ---------------------------------------------                 ---------  ---------"
 	@git diff --numstat | grep -v "^-" | awk '{sum_add += $$1; sum_del += $$2; printf "  %-60s  %-9s  %-9s\n", $$3, $$1, $$2} END {printf "\n  %-60s  %-9s  %-9s\n", "TOTAL", sum_add, sum_del}'
 endif
+
+# Define variables
+DOCKER_IMAGE_TAG := stdio
+DOCKER_FULL_IMAGE := $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
+
+# Build the Docker image
+build-docker:
+	@echo "Building Docker image: $(DOCKER_FULL_IMAGE)"
+	docker build --no-cache -t $(DOCKER_FULL_IMAGE) .
+	@echo "Docker image built successfully!"
+	@echo "To run the container: docker run -it --rm $(DOCKER_FULL_IMAGE)"
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning build artifacts..."
+	find . -type d -name __pycache__ -exec rm -rf {} +
+	find . -type d -name "*.egg-info" -exec rm -rf {} +
+	find . -type d -name "*.eggs" -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+	find . -type f -name "*.pyo" -delete
+	find . -type f -name "*.pyd" -delete
+	find . -type f -name ".coverage" -delete
+	find . -type d -name "htmlcov" -exec rm -rf {} +
+	find . -type d -name ".pytest_cache" -exec rm -rf {} +
+	find . -type d -name ".coverage" -exec rm -rf {} +
+	find . -type d -name ".tox" -exec rm -rf {} +
+	find . -type f -name "*.so" -delete
+	find . -type f -name "*.c" -name "*.html" -delete
+	@echo "Cleaned!"

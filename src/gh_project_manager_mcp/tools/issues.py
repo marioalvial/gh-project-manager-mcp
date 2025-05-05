@@ -1,558 +1,539 @@
 """Implementations for GitHub issue-related MCP tools."""
 
-import json
-import sys  # Import sys for stderr
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 from mcp.server.fastmcp import FastMCP
+from result import Err
 
-from gh_project_manager_mcp.utils.gh_utils import resolve_param, run_gh_command
+from gh_project_manager_mcp.utils.config import resolve_param
+from gh_project_manager_mcp.utils.error import (
+    Error,
+    ErrorCode,
+)
+from gh_project_manager_mcp.utils.gh_utils import (
+    execute_gh_command,
+    print_stderr,
+)
+from gh_project_manager_mcp.utils.response_handler import handle_result
 
-# --- Tool Implementations (without decorator) ---
 
-
-def _create_github_issue_impl(
-    owner: str,
-    repo: str,
+@handle_result
+def create_issue(
     title: str,
+    owner: str = None,
+    repo: str = None,
+    body: str = None,
+    assignee: str = None,
+    labels: List[str] = None,
+    project: str = None,
 ) -> Dict[str, Any]:
-    """Implement the logic for creating a GitHub issue.
+    """Create a GitHub issue.
 
-    Uses `gh issue create`.
+    Args:
+    ----
+        title: Issue title
+        owner: The repository owner (falls back to GH_REPO_OWNER env var)
+        repo: The repository name (falls back to GH_REPO_NAME env var)
+        body: Issue body (falls back to configured default)
+        assignee: GitHub username to assign the issue to
+        labels: List of labels to apply to the issue
+        project: Project to add the issue to
+
+    Returns:
+    -------
+        Result containing either Success or Error
+
     """
-    try:
-        print(
-            f"DEBUG [create_issue]: Starting with owner={owner}, repo={repo}, title={title}"
-        )
+    # Resolve parameters from config or runtime values
+    owner_val = resolve_param("global", "owner", owner)
+    repo_val = resolve_param("global", "repo", repo).replace("_", "-")
+    body_val = resolve_param("issue", "body", body)
+    assignee_val = resolve_param("issue", "assignee", assignee)
+    labels_val = resolve_param("issue", "labels", labels)
+    project_val = resolve_param("issue", "project", project)
 
-        # Define optional parameters inside the function
-        body: Optional[str] = None
-        assignee: Optional[str] = None
-        issue_type: Optional[str] = None
-        labels: Optional[List[str]] = None
-        project: Optional[str] = None
+    # Validate required parameters
+    if owner_val is None:
+        error = Error.required_param_missing(param="owner")
+        return Err(error)
 
-        # Resolve optional parameters through resolve_param utility
-        try:
-            assignee_resolved = resolve_param("issue", "assignee", assignee)
-            labels_resolved = resolve_param("issue", "labels", labels)
-            project_resolved = resolve_param("issue", "project", project)
-            print(
-                f"DEBUG [create_issue]: Resolved params: assignee={assignee_resolved}, labels={labels_resolved}, project={project_resolved}"
-            )
-        except Exception as e:
-            print(f"DEBUG [create_issue]: Error resolving parameters: {str(e)}")
-            return {"error": "Failed to resolve parameters", "details": str(e)}
+    if repo_val is None:
+        error = Error.required_param_missing(param="repo")
+        return Err(error)
 
-        # Normalizar o nome do repositório (substituir underscores por hifens se necessário)
-        # Isso é necessário porque o GitHub CLI espera hifens nos nomes dos repositórios,
-        # mas nosso código pode estar usando underscores
-        repo = repo.replace("_", "-")
-        print(f"DEBUG [create_issue]: Normalized repo name: {repo}")
+    # Build the command
+    command = ["issue", "create"]
 
-        # Start building the command with required parameters
-        command = [
-            "issue",
-            "create",
-            "--repo",
-            f"{owner}/{repo}",
-            "--title",
-            title,
-        ]
+    # Add repo specification
+    command.extend(["-R", f"{owner_val}/{repo_val}"])
 
-        # Add body if provided, otherwise use a default
-        body_resolved = body or "Created via GitHub MCP Server"
-        command.extend(["--body", body_resolved])
+    # Add title
+    command.extend(["--title", title])
 
-        # Add optional parameters if they were provided/resolved
-        if project_resolved:
-            command.extend(["--project", project_resolved])
-        if assignee_resolved:
-            command.extend(["--assignee", assignee_resolved])
+    # Add optional parameters
+    if body_val:
+        command.extend(["--body", body_val])
 
-        # Handle issue type (maps to specific labels in GitHub: bug, enhancement, etc.)
-        try:
-            issue_type_resolved = resolve_param("issue", "type", issue_type)
-            if issue_type_resolved:
-                # Map issue_type to GitHub's label system
-                type_label_map = {
-                    "bug": "bug",
-                    "feature": "enhancement",
-                    "enhancement": "enhancement",
-                    "documentation": "documentation",
-                    "question": "question",
-                }
-                label = type_label_map.get(issue_type_resolved.lower())
-                if label:
-                    if labels_resolved and isinstance(labels_resolved, list):
-                        labels_resolved.append(label)
-                    else:
-                        labels_resolved = [label]
-        except Exception as e:
-            print(f"DEBUG [create_issue]: Error resolving issue type: {str(e)}")
-            # Continue execution without issue type
+    if assignee_val:
+        command.extend(["--assignee", assignee_val])
 
-        # Add labels if provided
-        if labels_resolved:
-            for label in labels_resolved:
-                command.extend(["--label", label])
-
-        print(f"DEBUG [create_issue]: Final command: gh {' '.join(command)}")
-
-        # Execute the command
-        result = run_gh_command(command)
-        print(f"DEBUG [create_issue]: Command result type: {type(result)}")
-
-        # Handle the command result
-        if isinstance(result, dict):
-            if "error" in result:
-                print(f"DEBUG [create_issue]: Error in result: {result}")
-            else:
-                print(f"DEBUG [create_issue]: Success result: {result}")
-            return result  # Return the JSON result directly
-        elif isinstance(result, str):
-            print(f"DEBUG [create_issue]: String result received: {result[:100]}")
-
-            # Tenta interpretar links do GitHub como sucesso
-            if result.startswith("https://github.com"):
-                url = result.strip()
-
-                # Extrair informações do URL
-                # Formato típico: https://github.com/owner/repo/issues/123
-                try:
-                    parts = url.split("/")
-                    issue_number = int(parts[-1])
-
-                    return {
-                        "status": "success",
-                        "url": url,
-                        "number": issue_number,
-                        "title": title,
-                        "body": body_resolved,
-                        "state": "open",
-                    }
-                except (IndexError, ValueError):
-                    # Se não conseguir extrair o número da issue, retorne apenas a URL
-                    return {
-                        "status": "success",
-                        "url": url,
-                        "message": f"Issue created successfully: {url}",
-                    }
-
-            # Tenta analisar como JSON (caso o resultado seja JSON em uma string)
-            try:
-                parsed_json = json.loads(result)
-                print(f"DEBUG [create_issue]: Parsed JSON from string: {parsed_json}")
-                return parsed_json
-            except json.JSONDecodeError:
-                print("DEBUG [create_issue]: Failed to parse result as JSON")
-                return {
-                    "error": "Unexpected string result from gh issue create",
-                    "raw": result,
-                }
+    if labels_val:
+        if isinstance(labels_val, list):
+            command.extend(["--label", ",".join(labels_val)])
         else:
-            print(f"DEBUG [create_issue]: Unexpected result type: {type(result)}")
-            return {
-                "error": "Unexpected result type from gh issue create",
-                "raw": str(result),
-            }
-    except Exception as e:
-        import traceback
+            command.extend(["--label", labels_val])
 
-        error_trace = traceback.format_exc()
-        print(f"DEBUG [create_issue]: Unhandled exception: {str(e)}")
-        print(f"DEBUG [create_issue]: Traceback: {error_trace}")
-        return {
-            "error": "Unhandled exception in create_github_issue_impl",
-            "details": str(e),
-            "traceback": error_trace,
-        }
+    if project_val:
+        command.extend(["--project", project_val])
+
+    # Execute the command
+    result = execute_gh_command(command)
+
+    return result
 
 
-def _get_github_issue_impl(owner: str, repo: str, issue_number: int) -> Dict[str, Any]:
+@handle_result
+def get_issue(
+    issue_number: int,
+    owner: str = None,
+    repo: str = None,
+) -> Dict[str, Any]:
     """Get details of a specific GitHub issue by number.
 
-    Uses `gh issue view`.
+    Args:
+    ----
+        issue_number: The issue number to view
+        owner: The repository owner (falls back to GH_REPO_OWNER env var)
+        repo: The repository name (falls back to GH_REPO_NAME env var)
+
+    Returns:
+    -------
+        Result containing either the issue details or Error
+
     """
+    # Resolve parameters from config or runtime values
+    owner_val = resolve_param("global", "owner", owner)
+    repo_val = resolve_param("global", "repo", repo).replace("_", "-")
+
+    # Validate required parameters
+    if owner_val is None:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if repo_val is None:
+        return Err(Error.required_param_missing(param="repo"))
+
+    # Build the command
     command = [
         "issue",
         "view",
         str(issue_number),
-        "--repo",
-        f"{owner}/{repo}",
         "--json",
-        (
-            "number,title,state,url,body,createdAt,updatedAt,labels,"
-            "assignees,comments,author,closedAt"
-        ),
+        "number,title,state,url,body,createdAt,updatedAt,labels,assignees,comments,author,closedAt",
     ]
 
-    # Run the command and get the result
-    result = run_gh_command(command)
+    # Add repo specification
+    command.extend(["--repo", f"{owner_val}/{repo_val}"])
 
-    # Process the result
-    if isinstance(result, dict) and "number" in result:
-        return result  # Return the issue details directly
-    elif isinstance(result, dict) and "error" in result:
-        return result  # Return the error directly
-    else:
-        return {"error": "Unexpected result from gh issue view", "raw": result}
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _list_github_issues_impl(
-    owner: str,
-    repo: str,
-) -> List[Dict[str, Any]]:
+@handle_result
+def list_issues(
+    limit: int,
+    owner: str = None,
+    repo: str = None,
+    state: str = None,
+    assignee: str = None,
+    creator: str = None,
+    mentioned: str = None,
+    labels: List[str] = None,
+    milestone: str = None,
+) -> Dict[str, Any]:
     """List GitHub issues with optional filtering.
 
-    Uses `gh issue list`.
+    Args:
+    ----
+        limit: Maximum number of issues to return
+        owner: The repository owner (falls back to GH_REPO_OWNER env var)
+        repo: The repository name (falls back to GH_REPO_NAME env var)
+        state: Issue state to filter by (open, closed, all)
+        assignee: Filter by assignee username
+        creator: Filter by creator username
+        mentioned: Filter by mentioned username
+        labels: List of labels to filter by
+        milestone: Filter by milestone
+
+    Returns:
+    -------
+        Result containing either the list of issues or Error
+
     """
-    # Define optional parameters inside the function
-    state: Optional[str] = None
-    assignee: Optional[str] = None
-    creator: Optional[str] = None
-    mentioned: Optional[str] = None
-    labels: Optional[List[str]] = None
-    milestone: Optional[str] = None
-    limit: Optional[int] = None
+    # Resolve parameters from config or runtime values
+    owner_val = resolve_param("global", "owner", owner)
+    repo_val = resolve_param("global", "repo", repo).replace("_", "-")
 
-    # Resolve parameters with defaults
-    state_resolved = resolve_param("issue", "state", state)
-    limit_resolved = resolve_param("issue", "limit", limit)
-    assignee_resolved = resolve_param("issue", "assignee", assignee)
-    labels_resolved = resolve_param("issue", "labels", labels)
+    # Validate required parameters
+    if owner_val is None:
+        return Err(Error.required_param_missing(param="owner"))
 
-    # Basic command with common flags
+    if repo_val is None:
+        return Err(Error.required_param_missing(param="repo"))
+
+    # Build the command
     command = [
         "issue",
         "list",
-        "--repo",
-        f"{owner}/{repo}",
         "--json",
         "number,title,state,url,createdAt,updatedAt,labels,assignees",
     ]
 
-    # Add filters based on provided arguments
-    if state_resolved:
-        command.extend(["--state", state_resolved])
-    if assignee_resolved:
-        command.extend(["--assignee", assignee_resolved])
+    # Add repo specification
+    command.extend(["--repo", f"{owner_val}/{repo_val}"])
+
+    # Add optional parameters
+    if state:
+        command.extend(["--state", state])
+    if assignee:
+        command.extend(["--assignee", assignee])
     if creator:
         command.extend(["--author", creator])
     if mentioned:
         command.extend(["--mention", mentioned])
     if milestone:
         command.extend(["--milestone", milestone])
-    if labels_resolved:
-        # Add each label separately
-        for label in labels_resolved:
-            command.extend(["--label", label])
-    if limit_resolved:
-        command.extend(["--limit", str(limit_resolved)])
+    if labels:
+        if isinstance(labels, list):
+            for label in labels:
+                command.extend(["--label", label])
+        else:
+            command.extend(["--label", labels])
 
-    result = run_gh_command(command)
+    command.extend(["--limit", str(limit)])
 
-    if isinstance(result, list):
-        return result
-    elif isinstance(result, dict) and "error" in result:
-        print(
-            f"Error running gh issue list: {result.get('error')}", file=sys.stderr
-        )  # pragma: no cover
-        return []  # Return empty list on error
-    elif isinstance(result, str):
-        # Simplified logic: If it's a string, try to parse it as JSON.
-        # If parsing succeeds and it's a list, return it.
-        # Otherwise, return an error dictionary.
-        # This simplification reduces branching and makes coverage easier.
-        result_error = {
-            "error": "Failed to decode JSON response from gh issue list",
-            "raw": result,
-        }
-
-        try:
-            parsed_result = json.loads(result)
-        except json.JSONDecodeError:  # pragma: no cover
-            print(f"Error decoding JSON from gh issue list: {result}", file=sys.stderr)
-            return [result_error]
-
-        if not isinstance(parsed_result, list):  # pragma: no cover
-            print(
-                f"gh issue list returned JSON but not a list: {result}", file=sys.stderr
-            )
-            result_error["error"] = (
-                "Expected list result from gh issue list but got different JSON type"
-            )
-            return [result_error]
-
-        return parsed_result
-    else:
-        print(
-            f"Unexpected result from gh issue list: {result}", file=sys.stderr
-        )  # pragma: no cover
-        return []  # Return empty list for other unexpected results
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _close_github_issue_impl(
-    owner: str,
-    repo: str,
-    issue_identifier: Union[int, str],
-    comment: Optional[str] = None,
-    reason: Optional[str] = None,
+@handle_result
+def close_issue(
+    issue_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    comment: str = None,
+    reason: str = None,
 ) -> Dict[str, Any]:
-    """Close a GitHub issue (by number or URL).
+    """Close a GitHub issue.
 
-    Uses `gh issue close`.
+    Args:
+    ----
+        issue_identifier: The issue number or URL to close
+        owner: The repository owner (falls back to GH_REPO_OWNER env var)
+        repo: The repository name (falls back to GH_REPO_NAME env var)
+        comment: Optional comment to add while closing the issue
+        reason: Reason for closing (completed, not planned, duplicate)
+
+    Returns:
+    -------
+        Result containing either success information or Error
+
     """
-    # Basic command to close the issue
-    command = ["issue", "close", str(issue_identifier), "--repo", f"{owner}/{repo}"]
+    # Resolve parameters from config or runtime values
+    owner_val = resolve_param("global", "owner", owner)
+    repo_val = resolve_param("global", "repo", repo).replace("_", "-")
 
-    # Add optional parameters if provided
-    comment_resolved = resolve_param("issue", "close_comment", comment)
-    if comment_resolved:
-        command.extend(["--comment", comment_resolved])
+    # Validate required parameters
+    if owner_val is None:
+        return Err(Error.required_param_missing(param="owner"))
 
-    # Add optional reason if provided
-    reason_resolved = resolve_param("issue", "close_reason", reason)
-    if reason_resolved:
-        # Validate reason (GitHub API requires one of these values)
+    if repo_val is None:
+        return Err(Error.required_param_missing(param="repo"))
+
+    # Build the command
+    command = ["issue", "close", issue_identifier]
+
+    # Add repo specification
+    command.extend(["--repo", f"{owner_val}/{repo_val}"])
+
+    # Add optional parameters
+    if comment:
+        command.extend(["--comment", comment])
+
+    # Validate and add reason if provided
+    if reason:
         valid_reasons = ["completed", "not planned", "duplicate"]
-        if reason_resolved.lower() in valid_reasons:
-            command.extend(["--reason", reason_resolved.lower()])
+        if reason.lower() in valid_reasons:
+            command.extend(["--reason", reason.lower()])
         else:
-            return {
-                "error": (
-                    f"Invalid reason '{reason_resolved}'. "
-                    f"Must be one of: {valid_reasons}"
-                )
-            }
+            return Err(Error.invalid_param(reason, valid_reasons))
 
-    # Run the command
-    result = run_gh_command(command)
-
-    # Process the result
-    if isinstance(result, dict) and "error" in result:
-        return result  # Return error dictionary
-    elif isinstance(result, str):
-        # Success case for string output (URL or confirmation message)
-        if result.startswith("https://github.com"):
-            return {"status": "success", "url": result}
-        else:
-            return {"status": "success", "message": result.strip()}
-    else:
-        # Unexpected success (empty string or other)
-        return {"status": "success", "message": "Issue closed successfully."}
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _comment_github_issue_impl(
-    owner: str,
-    repo: str,
-    issue_identifier: Union[int, str],
-    body: Optional[str] = None,
-    body_file: Optional[str] = None,
+@handle_result
+def comment_issue(
+    issue_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    body: str = None,
+    body_file: str = None,
 ) -> Dict[str, Any]:
     """Add a comment to a GitHub issue.
 
-    Uses `gh issue comment`.
+    Args:
+    ----
+        issue_identifier: The issue number or URL to comment on
+        owner: The repository owner (falls back to GH_REPO_OWNER env var)
+        repo: The repository name (falls back to GH_REPO_NAME env var)
+        body: Text content of the comment
+        body_file: Path to file containing comment text (mutually exclusive with body)
+
+    Returns:
+    -------
+        Result containing either success information or Error
+
     """
+    # Resolve parameters from config or runtime values
+    owner_val = resolve_param("global", "owner", owner)
+    repo_val = resolve_param("global", "repo", repo).replace("_", "-")
+
+    # Validate required parameters
+    if owner_val is None:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if repo_val is None:
+        return Err(Error.required_param_missing(param="repo"))
+
     # Validate that either body or body_file is provided, but not both
     if not body and not body_file:
-        return {
-            "error": "Required parameter missing: provide either 'body' or 'body_file'."
-        }
+        return Err(Error.required_params_missing(["body", "body_file"]))
+
     if body and body_file:
-        return {"error": "Parameters 'body' and 'body_file' are mutually exclusive."}
+        return Err(Error.invalid_param("body and body_file", ["body", "body_file"]))
 
-    # Resolve parameters
-    body_resolved = resolve_param("issue", "comment_body", body)
-    body_file_resolved = resolve_param("issue", "comment_body_file", body_file)
+    # Build the command
+    command = ["issue", "comment", issue_identifier]
 
-    # Create the base command
-    command = ["issue", "comment", str(issue_identifier), "--repo", f"{owner}/{repo}"]
+    # Add repo specification
+    command.extend(["--repo", f"{owner_val}/{repo_val}"])
 
     # Add either body or body_file to the command
-    if body_resolved:
-        command.extend(["--body", body_resolved])
-    elif body_file_resolved:
+    if body:
+        command.extend(["--body", body])
+    elif body_file:
         # Handle special stdin case
-        if body_file_resolved == "-":
-            return {
-                "error": (
-                    "Reading comment body from stdin ('-') is not supported "
-                    "via this tool."
+        if body_file == "-":
+            return Err(
+                Error(
+                    ErrorCode.INVALID_PARAM,
+                    exception=Exception(
+                        "Reading comment body from stdin ('-') is not "
+                        "supported via this tool."
+                    ),
+                    format_args={"param": "body_file"},
                 )
-            }
-        command.extend(["--body-file", body_file_resolved])
+            )
+        command.extend(["--body-file", body_file])
 
-    # Run the command
-    result = run_gh_command(command)
-
-    # Process the result
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str) and result.startswith("https://github.com/"):
-        # Return the comment URL on success
-        return {"status": "success", "comment_url": result.strip()}
-    else:
-        # Handle unexpected output
-        return {"error": "Unexpected result from gh issue comment", "raw": result}
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _delete_github_issue_impl(
-    owner: str,
-    repo: str,
-    issue_identifier: Union[int, str],
+@handle_result
+def delete_issue(
+    issue_identifier: str,
+    owner: str = None,
+    repo: str = None,
     skip_confirmation: bool = False,
 ) -> Dict[str, Any]:
     """Delete a GitHub issue (requires admin rights).
 
-    Uses `gh issue delete`.
+    Args:
+    ----
+        issue_identifier: The issue number or URL to delete
+        owner: The repository owner (falls back to GH_REPO_OWNER env var)
+        repo: The repository name (falls back to GH_REPO_NAME env var)
+        skip_confirmation: Whether to skip the confirmation prompt
+
+    Returns:
+    -------
+        Result containing either success information or Error
+
     """
-    # Create the command
-    command = ["issue", "delete", str(issue_identifier), "--repo", f"{owner}/{repo}"]
+    # Resolve parameters from config or runtime values
+    owner_val = resolve_param("global", "owner", owner)
+    repo_val = resolve_param("global", "repo", repo).replace("_", "-")
+
+    # Validate required parameters
+    if owner_val is None:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if repo_val is None:
+        return Err(Error.required_param_missing(param="repo"))
+
+    # Build the command
+    command = ["issue", "delete", issue_identifier]
+
+    # Add repo specification
+    command.extend(["--repo", f"{owner_val}/{repo_val}"])
 
     # Add --yes flag to skip confirmation if requested
     if skip_confirmation:
         command.append("--yes")
 
-    # Run the command
-    result = run_gh_command(command)
-
-    # Process the result
-    if isinstance(result, dict) and "error" in result:
-        return result  # Return error dictionary
-    else:
-        # Success case - could be empty or confirmation message
-        return {
-            "status": "success",
-            "message": result.strip() if isinstance(result, str) else "",
-        }
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _status_github_issue_impl() -> Dict[str, Any]:
-    """Get issue status context for the current branch/user.
-
-    Uses `gh issue status`.
-    """
-    # Create the command with JSON output
-    command = [
-        "issue",
-        "status",
-        "--json",
-        "currentBranch,createdBy,openIssues,closedIssues,openPullRequests",
-    ]
-
-    # Run the command
-    result = run_gh_command(command)
-
-    # Return the result directly, it's already structured
-    return result
-
-
-def _edit_github_issue_impl(
-    owner: str,
-    repo: str,
-    issue_identifier: Union[int, str],
-    title: Optional[str] = None,
-    body: Optional[str] = None,
-    add_assignees: Optional[List[str]] = None,
-    remove_assignees: Optional[List[str]] = None,
-    add_labels: Optional[List[str]] = None,
-    remove_labels: Optional[List[str]] = None,
-    add_projects: Optional[List[str]] = None,
-    remove_projects: Optional[List[str]] = None,
-    milestone: Optional[Union[str, int]] = None,
+@handle_result
+def edit_issue(
+    issue_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    title: str = None,
+    body: str = None,
+    add_assignees: List[str] = None,
+    remove_assignees: List[str] = None,
+    add_labels: List[str] = None,
+    remove_labels: List[str] = None,
+    add_projects: List[str] = None,
+    remove_projects: List[str] = None,
+    milestone: Union[str, int] = None,
 ) -> Dict[str, Any]:
     """Edit issue metadata.
 
-    Uses `gh issue edit`.
+    Args:
+    ----
+        issue_identifier: The issue number or URL to edit
+        owner: The repository owner (falls back to GH_REPO_OWNER env var)
+        repo: The repository name (falls back to GH_REPO_NAME env var)
+        title: New issue title
+        body: New issue body
+        add_assignees: List of assignees to add
+        remove_assignees: List of assignees to remove
+        add_labels: List of labels to add
+        remove_labels: List of labels to remove
+        add_projects: List of projects to add
+        remove_projects: List of projects to remove
+        milestone: Milestone to set (name or number)
+
+    Returns:
+    -------
+        Result containing either success information or Error
+
     """
-    # Create the base command
-    command = ["issue", "edit", str(issue_identifier), "--repo", f"{owner}/{repo}"]
+    # Resolve parameters from config or runtime values
+    owner_val = resolve_param("global", "owner", owner)
+    repo_val = resolve_param("global", "repo", repo).replace("_", "-")
 
-    # Resolve optional parameters that have config defaults
-    milestone_resolved = resolve_param("issue", "edit_milestone", milestone)
+    # Validate required parameters
+    if owner_val is None:
+        return Err(Error.required_param_missing(param="owner"))
 
-    # Add parameters if they were provided
-    if title is not None:
+    if repo_val is None:
+        return Err(Error.required_param_missing(param="repo"))
+
+    # Build the command
+    command = ["issue", "edit", issue_identifier]
+
+    # Add repo specification
+    command.extend(["--repo", f"{owner_val}/{repo_val}"])
+
+    # Add optional parameters
+    if title:
         command.extend(["--title", title])
-    if body is not None:
+
+    if body:
         command.extend(["--body", body])
-    if milestone_resolved is not None:
-        command.extend(["--milestone", str(milestone_resolved)])
 
-    # Handle assignees
     if add_assignees:
-        for assignee in add_assignees:
-            command.extend(["--add-assignee", assignee])
-    if remove_assignees:
-        for assignee in remove_assignees:
-            command.extend(["--remove-assignee", assignee])
-
-    # Handle labels
-    if add_labels:
-        for label in add_labels:
-            command.extend(["--add-label", label])
-    if remove_labels:
-        for label in remove_labels:
-            command.extend(["--remove-label", label])
-
-    # Handle projects
-    if add_projects:
-        for project in add_projects:
-            command.extend(["--add-project", project])
-    if remove_projects:  # pragma: no cover
-        for project in remove_projects:
-            command.extend(["--remove-project", project])
-
-    # Run the command
-    result = run_gh_command(command)
-
-    # Process the result
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str):
-        # Success case - typically returns the issue URL
-        if result.startswith("https://github.com"):
-            return {"status": "success", "url": result.strip()}
+        if isinstance(add_assignees, list):
+            command.extend(["--add-assignee", ",".join(add_assignees)])
         else:
-            return {"status": "success", "message": result.strip()}
-    else:  # pragma: no cover
-        return {"status": "success", "message": "Issue updated successfully."}
+            command.extend(["--add-assignee", add_assignees])
+
+    if remove_assignees:
+        if isinstance(remove_assignees, list):
+            command.extend(["--remove-assignee", ",".join(remove_assignees)])
+        else:
+            command.extend(["--remove-assignee", remove_assignees])
+
+    if add_labels:
+        if isinstance(add_labels, list):
+            command.extend(["--add-label", ",".join(add_labels)])
+        else:
+            command.extend(["--add-label", add_labels])
+
+    if remove_labels:
+        if isinstance(remove_labels, list):
+            command.extend(["--remove-label", ",".join(remove_labels)])
+        else:
+            command.extend(["--remove-label", remove_labels])
+
+    if add_projects:
+        if isinstance(add_projects, list):
+            command.extend(["--add-project", ",".join(add_projects)])
+        else:
+            command.extend(["--add-project", add_projects])
+
+    if remove_projects:
+        if isinstance(remove_projects, list):
+            command.extend(["--remove-project", ",".join(remove_projects)])
+        else:
+            command.extend(["--remove-project", remove_projects])
+
+    if milestone:
+        command.extend(["--milestone", str(milestone)])
+
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _reopen_github_issue_impl(
-    owner: str,
-    repo: str,
-    issue_identifier: Union[int, str],
-    comment: Optional[str] = None,
+@handle_result
+def reopen_issue(
+    issue_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    comment: str = None,
 ) -> Dict[str, Any]:
     """Reopen a closed issue.
 
-    Uses `gh issue reopen`.
+    Args:
+    ----
+        issue_identifier: The issue number or URL to reopen
+        owner: The repository owner (falls back to GH_REPO_OWNER env var)
+        repo: The repository name (falls back to GH_REPO_NAME env var)
+        comment: Optional comment to add when reopening the issue
+
+    Returns:
+    -------
+        Result containing either success information or Error
+
     """
-    # Create the base command
-    command = ["issue", "reopen", str(issue_identifier), "--repo", f"{owner}/{repo}"]
+    # Resolve parameters from config or runtime values
+    owner_val = resolve_param("global", "owner", owner)
+    repo_val = resolve_param("global", "repo", repo).replace("_", "-")
 
-    # Add optional comment if provided
-    # Note: We reuse the close_comment parameter config for this
-    comment_resolved = resolve_param("issue", "close_comment", comment)
-    if comment_resolved:
-        command.extend(["--comment", comment_resolved])
+    # Validate required parameters
+    if owner_val is None:
+        return Err(Error.required_param_missing(param="owner"))
 
-    # Run the command
-    result = run_gh_command(command)
+    if repo_val is None:
+        return Err(Error.required_param_missing(param="repo"))
 
-    # Process the result
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str):
-        # Success case - typically returns the issue URL
-        if result.startswith("https://github.com"):
-            return {"status": "success", "url": result.strip()}
-        else:
-            return {"status": "success", "message": result.strip()}
-    else:
-        return {"status": "success", "message": "Issue reopened successfully."}
+    # Build the command
+    command = ["issue", "reopen", issue_identifier]
+
+    # Add repo specification
+    command.extend(["--repo", f"{owner_val}/{repo_val}"])
+
+    # Add optional comment
+    if comment:
+        command.extend(["--comment", comment])
+
+    # Execute the command
+    return execute_gh_command(command)
 
 
 # --- Tool Registration ---
@@ -560,28 +541,32 @@ def _reopen_github_issue_impl(
 
 def init_tools(server: FastMCP):
     """Register issue-related tools with the MCP server."""
-    print("\n=== Registering Issue Tools ===")  # pragma: no cover
+    print_stderr("\n=== Registering Issue Tools ===")  # pragma: no cover
 
-    # Print the function names
-    print(
-        f"Create issue function name: {_create_github_issue_impl.__name__}"
+    # Print the function names for logging
+    print_stderr(
+        f"Create issue function name: {create_issue.__name__}"
     )  # pragma: no cover
-    print(
-        f"Get issue function name: {_get_github_issue_impl.__name__}"
+    print_stderr(f"Get issue function name: {get_issue.__name__}")  # pragma: no cover
+    print_stderr(
+        f"List issues function name: {list_issues.__name__}"
     )  # pragma: no cover
-    print(
-        f"List issues function name: {_list_github_issues_impl.__name__}"
+    print_stderr(
+        f"Delete issue function name: {delete_issue.__name__}"
+    )  # pragma: no cover
+    print_stderr(f"Edit issue function name: {edit_issue.__name__}")  # pragma: no cover
+    print_stderr(
+        f"Reopen issue function name: {reopen_issue.__name__}"
     )  # pragma: no cover
 
     # Register the tools
-    server.tool()(_create_github_issue_impl)
-    server.tool()(_get_github_issue_impl)
-    server.tool()(_list_github_issues_impl)
-    server.tool()(_close_github_issue_impl)
-    server.tool()(_comment_github_issue_impl)
-    server.tool()(_delete_github_issue_impl)
-    server.tool()(_status_github_issue_impl)
-    server.tool()(_edit_github_issue_impl)
-    server.tool()(_reopen_github_issue_impl)
+    server.tool()(create_issue)  # Register the new implementation
+    server.tool()(get_issue)  # Register the new implementation
+    server.tool()(list_issues)  # Register the new implementation
+    server.tool()(close_issue)  # Register the new implementation
+    server.tool()(comment_issue)  # Register the new implementation
+    server.tool()(delete_issue)  # Register the new implementation
+    server.tool()(edit_issue)  # Register the new implementation
+    server.tool()(reopen_issue)  # Register the new implementation
 
-    print("=== Issue Tools Registered ===\n")  # pragma: no cover
+    print_stderr("=== Issue Tools Registered ===\n")  # pragma: no cover

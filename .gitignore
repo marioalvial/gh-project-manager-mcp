@@ -76,3 +76,6 @@ htmlcov/
 
 # Semantic Release
 CHANGELOG.md
+
+# Environment variables file containing sensitive information
+.env

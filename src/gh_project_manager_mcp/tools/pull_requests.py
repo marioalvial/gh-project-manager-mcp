@@ -1,176 +1,248 @@
 """Implementations for GitHub pull request-related MCP tools."""
 
-import sys  # Import sys for stderr
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 
 from mcp.server.fastmcp import FastMCP
+from result import Err
 
-from gh_project_manager_mcp.utils.gh_utils import resolve_param, run_gh_command
+from gh_project_manager_mcp.utils.config import resolve_param
+from gh_project_manager_mcp.utils.error import (
+    Error,
+    ErrorCode,
+)
+from gh_project_manager_mcp.utils.gh_utils import (
+    execute_gh_command,
+)
+from gh_project_manager_mcp.utils.response_handler import handle_result
 
-# --- Tool Implementation (without decorator) ---
+# --- Tool Implementation (with decorator) ---
 
 
-def _create_pull_request_impl(
-    owner: str,
-    repo: str,
-    base: str,
+@handle_result
+def create_pull_request(
+    base_branch: str,
     head: str,
     title: str,
-    body: Optional[str] = None,
-    draft: Optional[bool] = None,
-    reviewers: Optional[List[str]] = None,
-    pr_labels: Optional[List[str]] = None,
-    pr_project: Optional[str] = None,
+    owner: str = None,
+    repo: str = None,
+    body: str = None,
+    draft: bool = False,
+    labels: List[str] = None,
+    project_title: str = None,
+    reviewers: List[str] = None,
+    assignee: str = None,
 ) -> Dict[str, Any]:
-    """Implement the logic for creating a GitHub pull request.
+    """Create a GitHub pull request.
 
-    Uses `gh pr create`.
+    Args:
+    ----
+        base_branch: Base branch to create PR against
+        head: Head branch containing changes
+        title: Title of the pull request
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        body: Description of the pull request
+        draft: Whether to create as a draft PR
+        labels: Labels to add to the PR
+        project_title: Project to add the PR to
+        reviewers: Reviewers to request for the PR
+        assignee: User to assign the PR to
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
-    # Parse optional parameters through resolve_param utility
-    body_resolved = resolve_param("pull_request", "body", body)
-    draft_resolved = resolve_param("pull_request", "draft", draft)
-    reviewers_resolved = resolve_param("pull_request", "reviewers", reviewers)
-    labels_resolved = resolve_param(
-        "pull_request", "pr_labels", pr_labels
-    )  # pragma: no cover
+    # Validate required parameters
+    if not owner:
+        return Err(Error.required_param_missing(param="owner"))
 
-    # Start building the command with required parameters
+    if not repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    if not base_branch:
+        return Err(Error.required_param_missing(param="base_branch"))
+
+    if not head:
+        return Err(Error.required_param_missing(param="head"))
+
+    if not title:
+        return Err(Error.required_param_missing(param="title"))
+
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+    resolved_body = resolve_param("pull_request", "body", body)
+    resolved_base = resolve_param("pull_request", "base", base_branch)
+    resolved_assignee = resolve_param("pull_request", "assignee", assignee)
+
+    # Create the base command
     command = [
         "pr",
         "create",
         "--repo",
-        f"{owner}/{repo}",
+        f"{resolved_owner}/{resolved_repo}",
         "--base",
-        base,
+        resolved_base,
         "--head",
         head,
         "--title",
         title,
-        "--body",
-        body_resolved or "",  # Empty string if body is None/empty
-        "--json",
-        "url,number,title,body,state",  # Request structured JSON output
     ]
 
-    # Add optional parameters if they were provided
-    if draft_resolved:  # pragma: no cover
+    # Add optional parameters if provided
+    if resolved_body:
+        command.extend(["--body", resolved_body])
+    else:
+        command.extend(["--body", "Created via GitHub MCP Server"])
+
+    # Add draft flag if provided
+    if draft:
         command.append("--draft")
 
-    # Add reviewers if provided
-    if reviewers_resolved:  # pragma: no cover
-        for reviewer in reviewers_resolved:
-            command.extend(["--reviewer", reviewer])
-
     # Add labels if provided
-    if labels_resolved:  # pragma: no cover
-        for label in labels_resolved:
+    if labels:
+        for label in labels:
             command.extend(["--label", label])
 
+    # Add project if provided
+    if project_title:
+        command.extend(["--project", project_title])
+
+    # Add assignee if provided
+    if resolved_assignee:
+        command.extend(["--assignee", resolved_assignee])
+
+    # Add reviewers if provided
+    if reviewers:
+        for reviewer in reviewers:
+            command.extend(["--reviewer", reviewer])
+
     # Execute the command
-    result = run_gh_command(command)
-
-    # Handle the result
-    if isinstance(result, dict) and "error" in result:
-        return result  # Return error dictionary directly
-    elif isinstance(result, dict) and "url" in result:
-        return result  # Return successful JSON response
-    elif isinstance(result, str):  # pragma: no cover
-        # This should be rare if --json is used correctly
-        return {
-            "error": "Unexpected string result from gh pr create",
-            "raw": result,
-        }
-    else:  # pragma: no cover
-        # This can occur if gh returns something unexpected
-        return {
-            "error": "Unexpected result type from gh pr create",
-        }
+    return execute_gh_command(command)
 
 
-def _list_github_pull_requests_impl(
-    owner: str,
-    repo: str,
-    state: Optional[str] = None,
-    limit: Optional[int] = None,
-    labels: Optional[List[str]] = None,
-    assignee: Optional[str] = None,
-    author: Optional[str] = None,
-    base: Optional[str] = None,
-    head: Optional[str] = None,
-) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+@handle_result
+def list_pull_requests(
+    limit: int,
+    owner: str = None,
+    repo: str = None,
+    state: str = None,
+    labels: List[str] = None,
+    assignee: str = None,
+    author: str = None,
+    base_branch: str = None,
+    head: str = None,
+) -> Dict[str, Any]:
     """List pull requests in a repository.
 
-    Uses `gh pr list`.
-    """
-    state_resolved = resolve_param("pull_request", "list_state", state)
-    limit_resolved = resolve_param("pull_request", "list_limit", limit)
-    labels_resolved = resolve_param("pull_request", "list_labels", labels)
-    assignee_resolved = resolve_param("pull_request", "assignee", assignee)
-    author_resolved = resolve_param("pull_request", "author", author)
-    base_resolved = resolve_param("pull_request", "base", base)
-    head_resolved = resolve_param("pull_request", "head", head)
+    Args:
+    ----
+        limit: Maximum number of PRs to return
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        state: Filter by state (open, closed, merged, all)
+        labels: Filter by labels
+        assignee: Filter by assignee
+        author: Filter by PR author
+        base_branch: Filter by base branch
+        head: Filter by head branch
 
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
+    """
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    # Build the command
     command = [
         "pr",
         "list",
         "--repo",
-        f"{owner}/{repo}",
+        f"{resolved_owner}/{resolved_repo}",
         "--limit",
-        str(limit_resolved if limit_resolved is not None else 30),
+        str(limit),
         "--json",
-        ("number,title,state,url,labels,assignees,author," "baseRefName,headRefName"),
+        "number,title,state,url,labels,assignees,author,baseRefName,headRefName",
     ]
-    if state_resolved:  # pragma: no cover
-        command.extend(["--state", str(state_resolved)])
-    if assignee_resolved:  # pragma: no cover
-        command.extend(["--assignee", str(assignee_resolved)])
-    if author_resolved:  # pragma: no cover
-        command.extend(["--author", str(author_resolved)])
-    if base_resolved:  # pragma: no cover
-        command.extend(["--base", str(base_resolved)])
-    if head_resolved:  # pragma: no cover
-        command.extend(["--head", str(head_resolved)])
-    if isinstance(labels_resolved, list) and labels_resolved:  # pragma: no cover
-        command.extend(["--label", ",".join(labels_resolved)])
 
-    result = run_gh_command(command)
+    if state:
+        command.extend(["--state", str(state)])
+    if assignee:
+        command.extend(["--assignee", str(assignee)])
+    if author:
+        command.extend(["--author", str(author)])
+    if base_branch:
+        command.extend(["--base", str(base_branch)])
+    if head:
+        command.extend(["--head", str(head)])
+    if isinstance(labels, list) and labels:
+        command.extend(["--label", ",".join(labels)])
 
-    if isinstance(result, dict) and "error" in result:  # pragma: no cover
-        return [result]
-    elif isinstance(result, list):
-        return result
-    elif isinstance(result, str):  # pragma: no cover
-        print(f"Warning: gh pr list returned string: {result}", file=sys.stderr)
-        return [
-            {
-                "error": (
-                    "Expected list result from gh pr list but got "
-                    "different JSON type"
-                ),
-                "raw": result,
-            }
-        ]
-    else:  # pragma: no cover
-        print(f"Error decoding JSON from gh pr list: {result}", file=sys.stderr)
-        return [
-            {"error": "Failed to decode JSON response from gh pr list", "raw": result}
-        ]
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _checkout_github_pull_request_impl(
-    owner: str,
-    repo: str,
-    pr_identifier: Union[int, str],
-    checkout_branch_name: Optional[str] = None,
+@handle_result
+def checkout_pull_request(
+    pr_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    checkout_branch_name: str = None,
     detach: bool = False,
     recurse_submodules: bool = False,
     force: bool = False,
 ) -> Dict[str, Any]:
-    """Implement the logic for checking out a pull request branch locally.
+    """Check out a pull request branch locally.
 
-    Uses `gh pr checkout`.
+    Args:
+    ----
+        pr_identifier: Pull request number or URL
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        checkout_branch_name: Name for the local branch (default is PR head ref)
+        detach: Checkout PR in detached HEAD state
+        recurse_submodules: Update all submodules
+        force: Force checkout even if there are local changes
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
-    command = ["pr", "checkout", str(pr_identifier), "--repo", f"{owner}/{repo}"]
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    if not pr_identifier:
+        return Err(Error.required_param_missing(param="pr_identifier"))
+
+    # Build the command
+    command = [
+        "pr",
+        "checkout",
+        str(pr_identifier),
+        "--repo",
+        f"{resolved_owner}/{resolved_repo}",
+    ]
+
     if checkout_branch_name:
         command.extend(["--branch", checkout_branch_name])
     if detach:
@@ -179,246 +251,490 @@ def _checkout_github_pull_request_impl(
         command.append("--recurse-submodules")
     if force:
         command.append("--force")
-    result = run_gh_command(command)
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str):
-        return {"status": "success", "message": result.strip()}
-    else:
-        return {"status": "success", "message": "Checkout successful"}
+
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _close_github_pull_request_impl(
-    owner: str,
-    repo: str,
-    pr_identifier: Union[int, str],
-    comment: Optional[str] = None,
+@handle_result
+def close_pull_request(
+    pr_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    comment: str = None,
     delete_branch: bool = False,
 ) -> Dict[str, Any]:
-    """Implement the logic for closing a GitHub pull request.
+    """Close a GitHub pull request.
 
-    Uses `gh pr close`.
+    Args:
+    ----
+        pr_identifier: Pull request number or URL
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        comment: Comment to add when closing
+        delete_branch: Whether to delete the head branch
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
-    command = ["pr", "close", str(pr_identifier), "--repo", f"{owner}/{repo}"]
-    comment_resolved = resolve_param("pull_request", "close_comment", comment)
-    if comment_resolved:
-        command.extend(["--comment", str(comment_resolved)])
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    if not pr_identifier:
+        return Err(Error.required_param_missing(param="pr_identifier"))
+
+    # Build the command
+    command = [
+        "pr",
+        "close",
+        str(pr_identifier),
+        "--repo",
+        f"{resolved_owner}/{resolved_repo}",
+    ]
+
+    if comment:
+        command.extend(["--comment", comment])
     if delete_branch:
         command.append("--delete-branch")
-    result = run_gh_command(command)
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str):
-        return {"status": "success", "message": result.strip()}
-    else:
-        return {"status": "success", "message": "Closed successfully"}
+
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _comment_github_pull_request_impl(
-    owner: str,
-    repo: str,
-    pr_identifier: Union[int, str],
-    body: Optional[str] = None,
-    body_file: Optional[str] = None,
+@handle_result
+def comment_pull_request(
+    pr_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    body: str = None,
+    body_file: str = None,
 ) -> Dict[str, Any]:
-    """Implement the logic for adding a comment to a pull request.
+    """Add a comment to a pull request.
 
-    Uses `gh pr comment`.
+    Args:
+    ----
+        pr_identifier: Pull request number or URL
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        body: Text content of the comment
+        body_file: Path to file containing comment text
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    if not pr_identifier:
+        return Err(Error.required_param_missing(param="pr_identifier"))
+
+    # Validate that either body or body_file is provided, but not both
     if not body and not body_file:
-        return {
-            "error": "Required parameter missing: provide either 'body' or 'body_file'."
-        }
+        return Err(Error.required_params_missing(["body", "body_file"]))
+
     if body and body_file:
-        return {"error": "Parameters 'body' and 'body_file' are mutually exclusive."}
-    body_resolved = resolve_param("pull_request", "comment_body", body)
-    body_file_resolved = resolve_param("pull_request", "comment_body_file", body_file)
-    command = ["pr", "comment", str(pr_identifier), "--repo", f"{owner}/{repo}"]
-    if body_resolved:
-        command.extend(["--body", str(body_resolved)])
-    elif body_file_resolved:
-        if str(body_file_resolved) == "-":
-            return {
-                "error": (
-                    "Reading comment body from stdin ('-') is not supported "
-                    "via this tool."
+        return Err(Error.invalid_param("body and body_file", ["body", "body_file"]))
+
+    # Build the command
+    command = [
+        "pr",
+        "comment",
+        str(pr_identifier),
+        "--repo",
+        f"{resolved_owner}/{resolved_repo}",
+    ]
+
+    # Add either body or body_file to the command
+    if body:
+        command.extend(["--body", body])
+    elif body_file:
+        # Handle special stdin case
+        if body_file == "-":
+            return Err(
+                Error(
+                    ErrorCode.INVALID_PARAM,
+                    exception=Exception(
+                        "Reading comment body from stdin ('-') is not "
+                        "supported via this tool."
+                    ),
+                    format_args={"param": "body_file"},
                 )
-            }
-        command.extend(["--body-file", str(body_file_resolved)])
-    result = run_gh_command(command)
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str) and result.startswith("https://github.com/"):
-        return {"status": "success", "comment_url": result.strip()}
-    else:
-        return {"error": "Unexpected result from gh pr comment", "raw": result}
+            )
+        command.extend(["--body-file", body_file])
+
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _diff_github_pull_request_impl(
-    owner: str,
-    repo: str,
-    pr_identifier: Union[int, str, None] = None,
-    color: Optional[str] = None,
+@handle_result
+def diff_pull_request(
+    owner: str = None,
+    repo: str = None,
+    pr_identifier: str = None,
+    color: str = None,
     patch: bool = False,
     name_only: bool = False,
 ) -> Dict[str, Any]:
-    """Implement the logic for viewing the diff of a pull request.
+    """View the diff of a pull request.
 
-    Uses `gh pr diff`.
+    Args:
+    ----
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        pr_identifier: Pull request number or URL (if None, uses current branch)
+        color: Color output option (auto, always, never)
+        patch: Format diff as a patch
+        name_only: Show only names of changed files
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    # Validate color parameter if provided
+    valid_color_options = ["auto", "always", "never"]
+    if color and color.lower() not in valid_color_options:
+        return Err(
+            Error.invalid_param(color, valid_color_options, "Invalid color option.")
+        )
+
+    # Build the command
     command = ["pr", "diff"]
+
     if pr_identifier is not None:
         command.append(str(pr_identifier))
-    command.extend(["--repo", f"{owner}/{repo}"])
-    valid_color_options = ["auto", "always", "never"]
+
+    command.extend(["--repo", f"{resolved_owner}/{resolved_repo}"])
+
     if color:
-        color_lower = color.lower()
-        if color_lower in valid_color_options:
-            command.extend(["--color", color_lower])
-        else:
-            print(  # pragma: no cover
-                f"Warning: Invalid color option '{color}', ignoring.", file=sys.stderr
-            )
+        command.extend(["--color", color.lower()])
     if patch:
         command.append("--patch")
     if name_only:
         command.append("--name-only")
-    result = run_gh_command(command)
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str):
-        return {"status": "success", "diff": result}
-    else:
-        return {"error": "Unexpected result from gh pr diff", "raw": result}
+
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _edit_github_pull_request_impl(
-    owner: str,
-    repo: str,
-    pr_identifier: Union[int, str],
-    title: Optional[str] = None,
-    body: Optional[str] = None,
-    base_branch: Optional[str] = None,
-    milestone: Optional[str] = None,
-    add_assignees: Optional[List[str]] = None,
-    remove_assignees: Optional[List[str]] = None,
-    add_labels: Optional[List[str]] = None,
-    remove_labels: Optional[List[str]] = None,
-    add_projects: Optional[List[str]] = None,
-    remove_projects: Optional[List[str]] = None,
-    add_reviewers: Optional[List[str]] = None,
-    remove_reviewers: Optional[List[str]] = None,
+@handle_result
+def edit_pull_request(
+    pr_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    title: str = None,
+    body: str = None,
+    base_branch: str = None,
+    add_assignees: List[str] = None,
+    remove_assignees: List[str] = None,
+    add_reviewers: List[str] = None,
+    remove_reviewers: List[str] = None,
+    add_labels: List[str] = None,
+    remove_labels: List[str] = None,
+    add_projects: List[str] = None,
+    remove_projects: List[str] = None,
+    milestone: str = None,
 ) -> Dict[str, Any]:
-    """Implement the logic for editing fields of a pull request.
+    """Edit fields of a pull request.
 
-    Uses `gh pr edit`.
+    Args:
+    ----
+        pr_identifier: Pull request number or URL
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        title: New title for the PR
+        body: New description for the PR
+        base_branch: Change the base branch
+        add_assignees: Add assignees
+        remove_assignees: Remove assignees
+        add_reviewers: Add reviewers
+        remove_reviewers: Remove reviewers
+        add_labels: Add labels
+        remove_labels: Remove labels
+        add_projects: Add to projects
+        remove_projects: Remove from projects
+        milestone: Set the milestone
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
-    command = ["pr", "edit", str(pr_identifier), "--repo", f"{owner}/{repo}"]
-    milestone_resolved = resolve_param("pull_request", "edit_milestone", milestone)
-    body_resolved = resolve_param("pull_request", "body", body)
-    if title is not None:
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+    resolved_body = resolve_param("pull_request", "body", body)
+    resolved_base = resolve_param("pull_request", "base", base_branch)
+
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    if not pr_identifier:
+        return Err(Error.required_param_missing(param="pr_identifier"))
+
+    # Validate that at least one change parameter is provided
+    has_changes = any(
+        [
+            title,
+            resolved_body,
+            resolved_base,
+            add_assignees,
+            remove_assignees,
+            add_reviewers,
+            remove_reviewers,
+            add_labels,
+            remove_labels,
+            add_projects,
+            remove_projects,
+            milestone,
+        ]
+    )
+
+    if not has_changes:
+        return Err(
+            Error(
+                ErrorCode.REQUIRED_PARAM_MISSING,
+                exception=Exception("At least one change parameter must be provided."),
+                format_args={"param": "change parameter (title, body, etc.)"},
+            )
+        )
+
+    # For assignees, if add_assignees is empty but we're making changes,
+    # use the default assignee
+    if not add_assignees and has_changes and not remove_assignees:
+        default_assignee = resolve_param("pull_request", "assignee", None)
+        if default_assignee:
+            add_assignees = [default_assignee]
+
+    # Build the command
+    command = [
+        "pr",
+        "edit",
+        str(pr_identifier),
+        "--repo",
+        f"{resolved_owner}/{resolved_repo}",
+    ]
+
+    # Add fields to command
+    if title:
         command.extend(["--title", title])
-    if body_resolved is not None:
-        command.extend(["--body", str(body_resolved)])
-    if base_branch is not None:
-        command.extend(["--base", base_branch])
-    if milestone_resolved is not None:
-        command.extend(["--milestone", str(milestone_resolved)])
-    if add_assignees:  # pragma: no cover
-        for a in add_assignees:
-            command.extend(["--add-assignee", a])
-    if remove_assignees:  # pragma: no cover
-        for a in remove_assignees:
-            command.extend(["--remove-assignee", a])
-    if add_labels:  # pragma: no cover
-        for lbl in add_labels:
-            command.extend(["--add-label", lbl])
-    if remove_labels:  # pragma: no cover
-        for lbl in remove_labels:
-            command.extend(["--remove-label", lbl])
-    if add_projects:  # pragma: no cover
-        for proj in add_projects:
-            command.extend(["--add-project", proj])
-    if remove_projects:  # pragma: no cover
-        for proj in remove_projects:
-            command.extend(["--remove-project", proj])
-    if add_reviewers:  # pragma: no cover
-        for rvw in add_reviewers:
-            command.extend(["--add-reviewer", rvw])
-    if remove_reviewers:  # pragma: no cover
-        for rvw in remove_reviewers:
-            command.extend(["--remove-reviewer", rvw])
-    result = run_gh_command(command)
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str) and result.startswith("https://github.com/"):
-        return {"status": "success", "url": result.strip()}
-    else:
-        return {
-            "error": "Unexpected result from gh pr edit",
-            "raw": result,
-        }  # pragma: no cover
+    if resolved_body:
+        command.extend(["--body", resolved_body])
+    if resolved_base:
+        command.extend(["--base", resolved_base])
+    if milestone:
+        command.extend(["--milestone", milestone])
+
+    # Add assignees
+    if add_assignees:
+        for assignee in add_assignees:
+            command.extend(["--add-assignee", assignee])
+    if remove_assignees:
+        for assignee in remove_assignees:
+            command.extend(["--remove-assignee", assignee])
+
+    # Add reviewers
+    if add_reviewers:
+        for reviewer in add_reviewers:
+            command.extend(["--add-reviewer", reviewer])
+    if remove_reviewers:
+        for reviewer in remove_reviewers:
+            command.extend(["--remove-reviewer", reviewer])
+
+    # Add labels
+    if add_labels:
+        for label in add_labels:
+            command.extend(["--add-label", label])
+    if remove_labels:
+        for label in remove_labels:
+            command.extend(["--remove-label", label])
+
+    # Add projects
+    if add_projects:
+        for project in add_projects:
+            command.extend(["--add-project", project])
+    if remove_projects:
+        for project in remove_projects:
+            command.extend(["--remove-project", project])
+
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _ready_github_pull_request_impl(
-    owner: str, repo: str, pr_identifier: Union[int, str]
+@handle_result
+def ready_pull_request(
+    pr_identifier: str,
+    owner: str = None,
+    repo: str = None,
 ) -> Dict[str, Any]:
     """Mark a draft PR as ready for review.
 
-    Uses `gh pr ready`.
+    Args:
+    ----
+        pr_identifier: Pull request number or URL
+        owner: Repository owner (username or organization)
+        repo: Repository name
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
-    command = ["pr", "ready", str(pr_identifier), "--repo", f"{owner}/{repo}"]
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
 
-    # Execute - Expects simple string confirmation or error
-    result = run_gh_command(command)
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
 
-    # Standardized result handling
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str):
-        return {"status": "success", "message": result.strip()}
-    else:
-        return {"status": "success", "message": "Marked as ready successfully"}
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    if not pr_identifier:
+        return Err(Error.required_param_missing(param="pr_identifier"))
+
+    # Build the command
+    command = [
+        "pr",
+        "ready",
+        str(pr_identifier),
+        "--repo",
+        f"{resolved_owner}/{resolved_repo}",
+    ]
+
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _reopen_github_pull_request_impl(
-    owner: str, repo: str, pr_identifier: Union[int, str], comment: Optional[str] = None
+@handle_result
+def reopen_pull_request(
+    pr_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    comment: str = None,
 ) -> Dict[str, Any]:
-    """Implement the logic for reopening a closed GitHub pull request.
+    """Reopen a closed GitHub pull request.
 
-    Uses `gh pr reopen`.
+    Args:
+    ----
+        pr_identifier: Pull request number or URL
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        comment: Comment to add when reopening
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
-    command = ["pr", "reopen", str(pr_identifier), "--repo", f"{owner}/{repo}"]
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
 
-    # Resolve comment - reusing 'close_comment' config placeholder for now
-    comment_resolved = resolve_param("pull_request", "close_comment", comment)
-    if comment_resolved:
-        command.extend(["--comment", str(comment_resolved)])
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
 
-    # Execute - Expects simple string confirmation or error
-    result = run_gh_command(command)
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
 
-    # Standardized result handling
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str):
-        return {"status": "success", "message": result.strip()}
-    else:
-        return {"status": "success", "message": "Reopened successfully"}
+    if not pr_identifier:
+        return Err(Error.required_param_missing(param="pr_identifier"))
+
+    # Build the command
+    command = [
+        "pr",
+        "reopen",
+        str(pr_identifier),
+        "--repo",
+        f"{resolved_owner}/{resolved_repo}",
+    ]
+
+    if comment:
+        command.extend(["--comment", comment])
+
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _review_github_pull_request_impl(
-    owner: str,
-    repo: str,
-    pr_identifier: Union[int, str],
+@handle_result
+def review_pull_request(
+    pr_identifier: str,
     action: str,  # approve, request_changes, comment
-    body: Optional[str] = None,
-    body_file: Optional[str] = None,
+    owner: str = None,
+    repo: str = None,
+    body: str = None,
+    body_file: str = None,
 ) -> Dict[str, Any]:
-    """Implement the logic for submitting a review on a GitHub pull request.
+    """Submit a review on a GitHub pull request.
 
-    Uses `gh pr review`.
+    Args:
+    ----
+        pr_identifier: Pull request number or URL
+        action: Review action (approve, request_changes, comment)
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        body: Review comment text
+        body_file: Path to file containing review text
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    if not pr_identifier:
+        return Err(Error.required_param_missing(param="pr_identifier"))
+
+    if not action:
+        return Err(Error.required_param_missing(param="action"))
+
+    # Validate action parameter
     action_lower = action.lower()
     valid_actions = {
         "approve": "--approve",
@@ -427,109 +743,131 @@ def _review_github_pull_request_impl(
     }
 
     if action_lower not in valid_actions:
-        return {
-            "error": f"""Invalid action '{action}'. \
-Must be one of: {list(valid_actions.keys())}"""
-        }
+        return Err(
+            Error.invalid_param(action, list(valid_actions.keys()), "Invalid action.")
+        )
+
+    # Validate action-specific requirements
     if (body or body_file) and action_lower == "approve":
-        return {"error": "Review body/body_file cannot be used with 'approve' action."}
+        return Err(
+            Error(
+                ErrorCode.INVALID_PARAM,
+                exception=Exception(
+                    "Review body/body_file cannot be used with 'approve' action."
+                ),
+                format_args={
+                    "param": "body with approve action",
+                    "valid_params": "No body allowed for approve",
+                },
+            )
+        )
+
     if not (body or body_file) and action_lower == "comment":
-        return {"error": "Review body/body_file is required for 'comment' action."}
+        return Err(Error.required_params_missing(["body", "body_file"]))
 
-    body_resolved = resolve_param("pull_request", "review_body", body)
-    body_file_resolved = resolve_param("pull_request", "review_body_file", body_file)
-    # TODO: Add 'review_body', 'review_body_file' to TOOL_PARAM_CONFIG if needed
-
+    # Validate that body and body_file are not provided together
     if body and body_file:
-        return {"error": "Parameters 'body' and 'body_file' are mutually exclusive."}
+        return Err(Error.invalid_param("body and body_file", ["body", "body_file"]))
 
-    command = ["pr", "review", str(pr_identifier), "--repo", f"{owner}/{repo}"]
+    # Build the command
+    command = [
+        "pr",
+        "review",
+        str(pr_identifier),
+        "--repo",
+        f"{resolved_owner}/{resolved_repo}",
+    ]
 
     command.append(valid_actions[action_lower])
 
-    if body_resolved:  # pragma: no cover
-        command.extend(["--body", str(body_resolved)])
-    elif body_file_resolved:  # pragma: no cover
-        if str(body_file_resolved) == "-":  # pragma: no cover
-            return {
-                "error": (
-                    "Reading review body from stdin ('-') is not supported "
-                    "via this tool."
+    if body:
+        command.extend(["--body", body])
+    elif body_file:
+        # Handle special stdin case
+        if body_file == "-":
+            return Err(
+                Error(
+                    ErrorCode.INVALID_PARAM,
+                    exception=Exception(
+                        "Reading review body from stdin ('-') is not "
+                        "supported via this tool."
+                    ),
+                    format_args={"param": "body_file"},
                 )
-            }
-        command.extend(["--body-file", str(body_file_resolved)])
+            )
+        command.extend(["--body-file", body_file])
 
-    # Execute - Expects simple string confirmation or error
-    result = run_gh_command(command)
-
-    # Standardized result handling
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str):
-        # Use the actual confirmation string from gh
-        return {"status": "success", "message": result.strip()}
-    else:  # pragma: no cover
-        # Fallback only if gh returns non-string/non-error
-        return {
-            "status": "success",
-            "message": f"Review submitted ({action}) successfully",
-        }
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _status_github_pull_request_impl() -> Dict[str, Any]:
+@handle_result
+def status_pull_request(random_string: str = "") -> Dict[str, Any]:
     """Get PR status relevant to the current user/branch.
 
-    Uses `gh pr status`.
+    Args:
+    ----
+        random_string: Dummy parameter for no-parameter tools
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
+    # Build the command
     command = [
         "pr",
         "status",
-        # Using default fields for now, can be customized if needed
         "--json",
         "createdBy,mentioned,reviewRequested",
     ]
 
-    # Execute - Expect JSON output
-    result = run_gh_command(command)
-
-    # Standardized result handling
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, dict):
-        # Check if the expected keys are present, gh returns empty dict {}
-        # if no PRs found
-        if (
-            "createdBy" in result
-            or "mentioned" in result
-            or "reviewRequested" in result
-        ):
-            return result  # Successful JSON with data
-        else:
-            # Return a more informative status if gh returns {}
-            return {
-                "status": "success",
-                "message": "No pull requests found for current status query.",
-            }
-    else:
-        return {"error": "Unexpected result from gh pr status", "raw": result}
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _view_github_pull_request_impl(
-    owner: str,
-    repo: str,
-    pr_identifier: Union[int, str],
-    comments: bool = False,  # Flag to include comments
+@handle_result
+def view_pull_request(
+    pr_identifier: str,
+    owner: str = None,
+    repo: str = None,
+    comments: bool = False,
 ) -> Dict[str, Any]:
-    """Implement the logic for viewing details of a GitHub pull request.
+    """View details of a GitHub pull request.
 
-    Uses `gh pr view`.
+    Args:
+    ----
+        pr_identifier: Pull request number or URL
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        comments: Whether to include comments in the output
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    if not pr_identifier:
+        return Err(Error.required_param_missing(param="pr_identifier"))
+
+    # Build the command
     command = [
         "pr",
         "view",
         str(pr_identifier),
         "--repo",
-        f"{owner}/{repo}",
+        f"{resolved_owner}/{resolved_repo}",
         "--json",
         (
             "number,title,state,url,body,createdAt,updatedAt,labels,"
@@ -537,76 +875,79 @@ def _view_github_pull_request_impl(
         ),
     ]
 
-    # Note: The --comments flag in the CLI shows comments in the terminal output,
-    # but the --json output includes comments regardless if requested in fields.
-    # We include 'comments' and 'reviews' in JSON, so the boolean flag isn't
-    # directly passed.
-    # We could add logic to filter the JSON output if comments=False, but simpler
-    # to return all JSON data.
+    # Add comments flag if requested
+    if comments:
+        command.append("--comments")
 
-    # Execute - Expect JSON output
-    result = run_gh_command(command)
-
-    # Standardized result handling
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, dict):
-        return result  # Successful JSON
-    else:  # pragma: no cover
-        return {"error": "Unexpected result from gh pr view", "raw": result}
+    # Execute the command
+    return execute_gh_command(command)
 
 
-def _update_branch_github_pull_request_impl(
-    owner: str,
-    repo: str,
-    pr_identifier: Optional[Union[int, str, None]] = None,
+@handle_result
+def update_branch_pull_request(
+    pr_identifier: str,
+    owner: str = None,
+    repo: str = None,
     rebase: bool = False,
 ) -> Dict[str, Any]:
     """Update a pull request branch with latest changes from the base branch.
 
-    Uses `gh pr update-branch`.
+    Args:
+    ----
+        pr_identifier: Pull request number or URL
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        rebase: Whether to rebase instead of merge
+
+    Returns:
+    -------
+        Result containing the command output on success or Error on failure
+
     """
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+
+    # Validate required parameters
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
+
+    if not pr_identifier:
+        return Err(Error.required_param_missing(param="pr_identifier"))
+
     # Build the command
     command = ["pr", "update-branch"]
 
-    # Add PR identifier if provided
-    if pr_identifier:
-        command.append(str(pr_identifier))
+    # Add PR identifier
+    command.append(str(pr_identifier))
 
     # Add repo information
-    command.extend(["--repo", f"{owner}/{repo}"])
+    command.extend(["--repo", f"{resolved_owner}/{resolved_repo}"])
 
     # Add rebase flag if specified
     if rebase:
         command.append("--rebase")
 
     # Execute the command
-    result = run_gh_command(command)
-
-    # Process the result
-    if isinstance(result, dict) and "error" in result:
-        return result
-    elif isinstance(result, str):
-        # Success case
-        return {"status": "success", "message": result.strip() or "PR branch updated."}
-    else:
-        # Unexpected result
-        return {"status": "success", "message": "PR branch updated."}
+    return execute_gh_command(command)
 
 
 # --- Tool Registration ---
 def init_tools(server: FastMCP):
     """Register pull request-related tools with the MCP server."""
-    server.tool()(_create_pull_request_impl)
-    server.tool()(_list_github_pull_requests_impl)
-    server.tool()(_checkout_github_pull_request_impl)
-    server.tool()(_close_github_pull_request_impl)
-    server.tool()(_comment_github_pull_request_impl)
-    server.tool()(_diff_github_pull_request_impl)
-    server.tool()(_edit_github_pull_request_impl)
-    server.tool()(_ready_github_pull_request_impl)
-    server.tool()(_reopen_github_pull_request_impl)
-    server.tool()(_review_github_pull_request_impl)
-    server.tool()(_status_github_pull_request_impl)
-    server.tool()(_view_github_pull_request_impl)
-    server.tool()(_update_branch_github_pull_request_impl)
+    server.tool()(create_pull_request)
+    server.tool()(list_pull_requests)
+    server.tool()(checkout_pull_request)
+    server.tool()(close_pull_request)
+    server.tool()(comment_pull_request)
+    server.tool()(diff_pull_request)
+    server.tool()(edit_pull_request)
+    server.tool()(ready_pull_request)
+    server.tool()(reopen_pull_request)
+    server.tool()(review_pull_request)
+    server.tool()(status_pull_request)
+    server.tool()(view_pull_request)
+    server.tool()(update_branch_pull_request)
