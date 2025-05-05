@@ -53,13 +53,13 @@ def create_pull_request(
         Result containing the command output on success or Error on failure
 
     """
+    # Resolve parameters
+    resolved_owner = resolve_param("global", "owner", owner)
+    resolved_repo = resolve_param("global", "repo", repo)
+    resolved_body = resolve_param("pull_request", "body", body)
+    resolved_assignee = resolve_param("pull_request", "assignee", assignee)
+
     # Validate required parameters
-    if not owner:
-        return Err(Error.required_param_missing(param="owner"))
-
-    if not repo:
-        return Err(Error.required_param_missing(param="repo"))
-
     if not base_branch:
         return Err(Error.required_param_missing(param="base_branch"))
 
@@ -69,12 +69,11 @@ def create_pull_request(
     if not title:
         return Err(Error.required_param_missing(param="title"))
 
-    # Resolve parameters
-    resolved_owner = resolve_param("global", "owner", owner)
-    resolved_repo = resolve_param("global", "repo", repo)
-    resolved_body = resolve_param("pull_request", "body", body)
-    resolved_base = resolve_param("pull_request", "base", base_branch)
-    resolved_assignee = resolve_param("pull_request", "assignee", assignee)
+    if not resolved_owner:
+        return Err(Error.required_param_missing(param="owner"))
+
+    if not resolved_repo:
+        return Err(Error.required_param_missing(param="repo"))
 
     # Create the base command
     command = [
@@ -83,7 +82,7 @@ def create_pull_request(
         "--repo",
         f"{resolved_owner}/{resolved_repo}",
         "--base",
-        resolved_base,
+        base_branch,
         "--head",
         head,
         "--title",
