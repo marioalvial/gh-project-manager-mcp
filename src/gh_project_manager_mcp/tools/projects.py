@@ -179,19 +179,17 @@ def list_project_fields(
 
 @handle_result
 def add_project_item(
-    project_id: str,
+    url: str,
+    project_id: str = None,
     owner: str = None,
-    issue_id: str = None,
-    pull_request_id: str = None,
 ) -> Dict[str, Any]:
     """Add an item (issue or PR) to a GitHub project.
 
     Args:
     ----
+        url: URL of the issue or pull request to add to the project
         project_id: The ID of the project
         owner: The owner of the project (user or organization)
-        issue_id: The ID of the issue to add (exclusive with pull_request_id)
-        pull_request_id: The ID of the pull request to add (exclusive with issue_id)
 
     Returns:
     -------
@@ -199,44 +197,18 @@ def add_project_item(
 
     """
     # Resolve parameters from config or runtime values
+    resolved_project_id = resolve_param("project", "project_id", project_id)
     resolved_owner = resolve_param("global", "owner", owner)
 
     # Build the command
-    command = ["project", "item-add", project_id, "--format", "json"]
+    command = ["project", "item-add", resolved_project_id, "--format", "json"]
 
     # Add owner if provided
     if resolved_owner:
         command.extend(["--owner", resolved_owner])
 
-    # Check for missing parameters
-    if issue_id is None and pull_request_id is None:
-        return Err(
-            Error(
-                ErrorCode.REQUIRED_PARAM_MISSING,
-                exception=Exception(
-                    "Either issue_id or pull_request_id must be provided."
-                ),
-                format_args={"param": "issue_id or pull_request_id"},
-            )
-        )
-
-    # Check for too many parameters
-    if issue_id is not None and pull_request_id is not None:
-        return Err(
-            Error(
-                ErrorCode.INVALID_PARAM,
-                exception=Exception(
-                    "Only one of issue_id or pull_request_id can be provided, not both."
-                ),
-                format_args={"param": "issue_id and pull_request_id"},
-            )
-        )
-
-    # Add the appropriate parameter
-    if issue_id is not None:
-        command.extend(["--issue-id", issue_id])
-    else:
-        command.extend(["--pull-request-id", pull_request_id])
+    # Add the URL to the command
+    command.extend(["--url", url])
 
     # Execute the command
     return execute_gh_command(command)
@@ -546,19 +518,19 @@ def view_project(project_id: str, owner: str = None) -> Dict[str, Any]:
 
 @handle_result
 def create_project_item(
-    project_id: str,
     title: str,
     body: str,
+    project_id: str = None,
     owner: str = None,
 ) -> Dict[str, Any]:
     """Create a draft issue item in a project.
 
     Args:
     ----
-        project_id: The ID of the project
-        owner: The owner of the project (user or organization)
         title: The title of the draft issue
         body: The body content of the draft issue
+        project_id: The ID of the project
+        owner: The owner of the project (user or organization)
 
     Returns:
     -------
@@ -566,13 +538,16 @@ def create_project_item(
 
     """
     # Resolve parameters from config or runtime values
+    resolved_project_id = resolve_param("project", "project_id", project_id)
     resolved_owner = resolve_param("global", "owner", owner)
-
     if not resolved_owner:
         return Err(Error.required_param_missing(param="owner"))
 
+    if not resolved_project_id:
+        return Err(Error.required_param_missing(param="project_id"))
+
     # Build the command
-    command = ["project", "item-create", project_id, "--format", "json"]
+    command = ["project", "item-create", resolved_project_id, "--format", "json"]
 
     # Add owner
     command.extend(["--owner", resolved_owner])
