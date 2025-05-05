@@ -560,13 +560,13 @@ def init_tools(server: FastMCP):
     )  # pragma: no cover
 
     # Register the tools
-    server.tool()(create_issue)  # Register the new implementation
-    server.tool()(get_issue)  # Register the new implementation
-    server.tool()(list_issues)  # Register the new implementation
-    server.tool()(close_issue)  # Register the new implementation
-    server.tool()(comment_issue)  # Register the new implementation
-    server.tool()(delete_issue)  # Register the new implementation
-    server.tool()(edit_issue)  # Register the new implementation
-    server.tool()(reopen_issue)  # Register the new implementation
+    # server.tool()(create_issue)  # Register the new implementation
+    # server.tool()(get_issue)  # Register the new implementation
+    # server.tool()(list_issues)  # Register the new implementation
+    # server.tool()(close_issue)  # Register the new implementation
+    # server.tool()(comment_issue)  # Register the new implementation
+    # server.tool()(delete_issue)  # Register the new implementation
+    # server.tool()(edit_issue)  # Register the new implementation
+    # server.tool()(reopen_issue)  # Register the new implementation
 
     print_stderr("=== Issue Tools Registered ===\n")  # pragma: no cover
