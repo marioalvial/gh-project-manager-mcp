@@ -590,7 +590,7 @@ def create_project_item(
 
 # --- Tool Registration ---
 def init_tools(server: FastMCP):
-    """Register project-related tools with the MCP server."""
+    """Register project-related tools, resources, and prompts with the MCP server."""
     print_stderr("\n=== Registering Project Tools ===")  # pragma: no cover
 
     # Print the function names for logging
@@ -638,3 +638,273 @@ def init_tools(server: FastMCP):
     server.tool()(create_project_item)
 
     print_stderr("=== Project Tools Registered ===\n")  # pragma: no cover
+
+    # Register resources
+    print_stderr("\n=== Registering Project Resources ===")  # pragma: no cover
+
+    # Register the item details resource
+    server.resource("project-item://{project_id}/{item_id}")(item_details)
+    print_stderr(
+        "Registered resource: project-item://{project_id}/{item_id}"
+    )  # pragma: no cover
+
+    # Register the field options resource
+    server.resource("field://{project_id}/{field_id}/options")(field_options)
+    print_stderr(
+        "Registered resource: field://{project_id}/{field_id}/options"
+    )  # pragma: no cover
+
+    # Register the project fields resource
+    server.resource("project://{project_id}/fields")(project_fields)
+    print_stderr(
+        "Registered resource: project://{project_id}/fields"
+    )  # pragma: no cover
+
+    print_stderr("=== Project Resources Registered ===\n")  # pragma: no cover
+
+    # Register prompts
+    print_stderr("\n=== Registering Project Prompts ===")  # pragma: no cover
+
+    # Register the status update prompt
+    server.prompt()(update_status_prompt)
+    print_stderr("Registered prompt: update_status_prompt")  # pragma: no cover
+
+    # Register the due date prompt
+    server.prompt()(set_due_date_prompt)
+    print_stderr("Registered prompt: set_due_date_prompt")  # pragma: no cover
+
+    # Register the priority change prompt
+    server.prompt()(change_priority_prompt)
+    print_stderr("Registered prompt: change_priority_prompt")  # pragma: no cover
+
+    # Register the generic field value prompt
+    server.prompt()(set_field_value_prompt)
+    print_stderr("Registered prompt: set_field_value_prompt")  # pragma: no cover
+
+    # Register the clear field prompt
+    server.prompt()(clear_field_prompt)
+    print_stderr("Registered prompt: clear_field_prompt")  # pragma: no cover
+
+    # Register the bulk status update prompt
+    server.prompt()(bulk_status_update_prompt)
+    print_stderr("Registered prompt: bulk_status_update_prompt")  # pragma: no cover
+
+    print_stderr("=== Project Prompts Registered ===\n")  # pragma: no cover
+
+
+# -- RESOURCES --
+
+
+def item_details(project_id: str, item_id: str) -> Dict[str, Any]:
+    """Resource providing detailed information about a specific project item."""
+    try:
+        # Use our existing function to get all items
+        resolved_owner = resolve_param("global", "owner", None)
+
+        # Set a high limit to ensure we get all items
+        command = ["project", "item-list", project_id, "--format", "json"]
+        if resolved_owner:
+            command.extend(["--owner", resolved_owner])
+        command.extend(["--limit", "100"])  # Use a reasonable limit
+
+        # Execute command to get all items
+        all_items = execute_gh_command(command)
+
+        # Filter to find our specific item
+        target_item = None
+        for item in all_items:
+            if item.get("id") == item_id:
+                target_item = item
+                break
+
+        if not target_item:
+            return {
+                "error": f"Item {item_id} not found in project {project_id}",
+                "available_items": len(all_items),
+            }
+
+        # Get the item's field values
+        field_values = target_item.get("fieldValues", [])
+
+        # Format the response with enhanced context
+        return {
+            "item_id": item_id,
+            "title": target_item.get("title", "Unknown"),
+            "type": target_item.get("type", "Unknown"),
+            "url": target_item.get("url", ""),
+            "content": target_item.get("content", ""),
+            "current_field_values": field_values,
+            "last_updated": target_item.get("updatedAt", ""),
+            "created_at": target_item.get("createdAt", ""),
+            "is_archived": target_item.get("isArchived", False),
+            "all_fields_count": len(field_values),
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "item_id": item_id,
+            "project_id": project_id,
+            "available": False,
+            "reason": "Failed to fetch item details",
+        }
+
+
+def field_options(project_id: str, field_id: str) -> Dict[str, Any]:
+    """Resource providing available options for a single-select field."""
+    try:
+        resolved_owner = resolve_param("global", "owner", None)
+
+        # Get all fields for the project
+        command = ["project", "field-list", project_id, "--format", "json"]
+        if resolved_owner:
+            command.extend(["--owner", resolved_owner])
+        command.extend(["--limit", "500"])  # High limit to get all fields
+
+        all_fields = execute_gh_command(command)
+
+        # Find the specific field
+        target_field = None
+        for field in all_fields:
+            if field.get("id") == field_id:
+                target_field = field
+                break
+
+        if not target_field:
+            return {
+                "error": f"Field {field_id} not found in project {project_id}",
+                "available_fields": len(all_fields),
+            }
+
+        # Check if this is a single select field and extract options
+        field_type = target_field.get("dataType", "")
+        if field_type != "SINGLE_SELECT":
+            return {
+                "field_id": field_id,
+                "field_name": target_field.get("name", ""),
+                "field_type": field_type,
+                "error": "This field is not a SINGLE_SELECT field and does not have options",
+            }
+
+        # Extract options
+        options = target_field.get("options", [])
+
+        return {
+            "field_id": field_id,
+            "field_name": target_field.get("name", ""),
+            "field_type": field_type,
+            "options": options,
+            "option_count": len(options),
+            "default_option": options[0] if options else None,
+            "usage_tip": "Use the 'id' value from the options array for the single_select_option_id parameter",
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "field_id": field_id,
+            "project_id": project_id,
+            "available": False,
+            "reason": "Failed to fetch field options",
+        }
+
+
+def project_fields(project_id: str) -> Dict[str, Any]:
+    """Resource providing information about all fields in a project."""
+    try:
+        resolved_owner = resolve_param("global", "owner", None)
+
+        # Get all fields for the project
+        command = ["project", "field-list", project_id, "--format", "json"]
+        if resolved_owner:
+            command.extend(["--owner", resolved_owner])
+        command.extend(["--limit", "500"])  # High limit to get all fields
+
+        all_fields = execute_gh_command(command)
+
+        # Organize fields by type for easier access
+        field_types = {}
+        for field in all_fields:
+            field_type = field.get("dataType", "UNKNOWN")
+            if field_type not in field_types:
+                field_types[field_type] = []
+            field_types[field_type].append(field)
+
+        # Create a field map for easy lookup
+        field_map = {field.get("id"): field for field in all_fields}
+
+        # Extract field names for easy reference
+        field_names = {field.get("id"): field.get("name") for field in all_fields}
+
+        return {
+            "project_id": project_id,
+            "fields": all_fields,
+            "field_count": len(all_fields),
+            "fields_by_type": field_types,
+            "field_map": field_map,
+            "field_names": field_names,
+            # Add contextual recommendations
+            "common_operations": {
+                "status_update": "Use SINGLE_SELECT fields for status updates",
+                "prioritization": "Use SINGLE_SELECT fields for priority or NUMBER fields for scoring",
+                "scheduling": "Use DATE fields for planning and deadlines",
+                "documentation": "Use TEXT fields for notes and context",
+            },
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "project_id": project_id,
+            "available": False,
+            "reason": "Failed to fetch project fields",
+        }
+
+
+# -- PROMPTS --
+
+
+def update_status_prompt(item_id: str, project_id: str, new_status: str) -> str:
+    """Prompt template for updating an item's status."""
+    return (
+        f"Update the status of item {item_id} in project {project_id} to '{new_status}'. "
+        f"If this exact status doesn't exist, choose the closest matching option."
+    )
+
+
+def set_due_date_prompt(item_id: str, project_id: str, due_date: str) -> str:
+    """Prompt template for setting a due date for an item."""
+    return (
+        f"Set the due date for item {item_id} in project {project_id} to {due_date}. "
+        f"Please ensure this is a business day. If it falls on a weekend, "
+        f"adjust to the following Monday."
+    )
+
+
+def change_priority_prompt(item_id: str, project_id: str, priority: str) -> str:
+    """Prompt template for changing an item's priority."""
+    return (
+        f"Change the priority of item {item_id} in project {project_id} to {priority}. "
+        f"Also, if this item has a due date coming up in less than a week, "
+        f"make sure to notify the assignee about this priority change."
+    )
+
+
+def set_field_value_prompt(
+    item_id: str, project_id: str, field_name: str, value: str
+) -> str:
+    """Prompt template for setting any field value by field name."""
+    return (
+        f"Set the '{field_name}' field for item {item_id} in project {project_id} to '{value}'. "
+        f"This will identify the correct field ID and value format automatically."
+    )
+
+
+def clear_field_prompt(item_id: str, project_id: str, field_name: str) -> str:
+    """Prompt template for clearing a field value."""
+    return f"Clear the '{field_name}' field value for item {item_id} in project {project_id}."
+
+
+def bulk_status_update_prompt(status_from: str, status_to: str, project_id: str) -> str:
+    """Prompt template for bulk updating statuses across a project."""
+    return (
+        f"Find all items in project {project_id} with status '{status_from}' "
+        f"and update them to '{status_to}'. This is part of our end-of-sprint cleanup."
+    )
